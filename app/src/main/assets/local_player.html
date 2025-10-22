@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Local Library</title>
+  <style>
+    body { background:#0f0f10; color:#fff; font-family: sans-serif; padding:16px; }
+    h1 { font-size:18px; margin-bottom:8px; }
+    #songs { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+    .song { padding:10px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
+    .btn { padding:6px 10px; border-radius:6px; border:0; background:#1DB954; color:#000; cursor:pointer; }
+    .small { padding:6px 8px; background:#222; color:#fff; border-radius:6px; }
+    #playerBar { display:flex; gap:8px; align-items:center; margin-top:16px; }
+    audio { width:100%; }
+    .controls { display:flex; gap:8px; }
+  </style>
+</head>
+<body>
+  <h1>Local Library</h1>
+  <div>
+    <button class="small" onclick="chooseFolder()">Choose Folder</button>
+    <button class="small" onclick="refresh()">Refresh List</button>
+  </div>
+
+  <div id="songs"><em>Loading...</em></div>
+
+  <div id="playerBar" style="display:none;">
+    <div style="flex:1"><strong id="title">—</strong><br/><small id="artist">—</small></div>
+    <div style="flex:2">
+      <audio id="audio" controls></audio>
+    </div>
+  </div>
+
+<script>
+  async function chooseFolder(){
+    try { if (Android && Android.chooseFolder) Android.chooseFolder(); else if (Android && Android.chooseFolder) Android.chooseFolder(); }
+    catch(e){ alert('chooseFolder not available'); }
+  }
+
+  function refresh(){
+    loadSongs();
+  }
+
+  // load list from the Java bridge
+  function loadSongs(){
+    try {
+      const json = Android.getDownloadedSongs(); // returns JSON string
+      const songs = JSON.parse(json || '[]');
+      renderSongs(songs);
+    } catch (err){
+      document.getElementById('songs').innerHTML = '<div style="color:#f88">Unable to read library</div>';
+      console.error(err);
+    }
+  }
+
+  function renderSongs(list){
+    const container = document.getElementById('songs');
+    container.innerHTML = '';
+    if (!list || list.length === 0) {
+      container.innerHTML = '<div style="opacity:0.7">No songs found in chosen folder.<br/>Use "Choose Folder" to pick the folder where songs are stored.</div>';
+      document.getElementById('playerBar').style.display='none';
+      return;
+    }
+
+    list.forEach((s, idx) => {
+      const el = document.createElement('div');
+      el.className = 'song';
+      el.innerHTML = `<div style="flex:1"><strong>${escapeHtml(s.name)}</strong></div>
+                      <div style="display:flex;gap:8px">
+                        <button class="btn" onclick="playSong('${encodeURIComponent(s.uri)}','${escapeHtml(s.name)}')">Play</button>
+                        <button class="small" onclick="downloadToApp('${encodeURIComponent(s.uri)}')">Reload</button>
+                      </div>`;
+      container.appendChild(el);
+    });
+  }
+
+  // Ask the Android bridge for a data URL for the selected doc URI, then set audio.src
+  function playSong(encodedUri, name){
+    const docUri = decodeURIComponent(encodedUri);
+    document.getElementById('title').textContent = name;
+    document.getElementById('artist').textContent = '';
+    document.getElementById('playerBar').style.display = 'flex';
+    const audio = document.getElementById('audio');
+    audio.src = ''; // reset while loading
+    setTimeout(() => {
+      try {
+        // getSongDataUrl may take time; it returns a (possibly large) data URL synchronously from Java
+        const dataUrl = Android.getSongDataUrl(docUri);
+        if (dataUrl && dataUrl.length > 0) {
+          audio.src = dataUrl;
+          audio.play().catch(e => console.error(e));
+        } else {
+          alert('Failed to load song data from device.');
+        }
+      } catch (err){
+        console.error(err);
+        alert('Playback failed: ' + err.message);
+      }
+    }, 50);
+  }
+
+  // Helper: in case web site saved songs we want to reload, simply refresh list
+  function downloadToApp(encodedUri){
+    // This is a convenience: if you want to re-copy or verify file, just refresh list
+    loadSongs();
+    alert('Refreshed list. If file was recently added, it should appear.');
+  }
+
+  // helper: called by Java when a download completed in the main webview
+  function reloadLocalLibrary(){
+    loadSongs();
+  }
+
+  function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // initial load
+  loadSongs();
+</script>
+</body>
+</html>
