@@ -1,0 +1,151 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>D-TECH University Info</title>
+  <style>
+    :root {
+      --primary: #000000;
+      --secondary: #f1f1f1;
+      --accent: #00bcd4;
+      --text-light: #ffffff;
+      --text-dark: #333333;
+      --card-bg: #1e1e1e;
+      --highlight-bg: #262626;
+    }body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  background: var(--secondary);
+  color: var(--text-dark);
+}
+header {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: var(--primary);
+  color: var(--text-light);
+}
+header img {
+  height: 50px;
+  margin-right: 1rem;
+}
+header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.container {
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 1rem;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+.card {
+  background: var(--card-bg);
+  border-radius: 10px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  overflow: hidden;
+  color: var(--text-light);
+  transition: transform 0.2s;
+}
+.card:hover {
+  transform: translateY(-4px);
+}
+.card-header {
+  padding: 1rem;
+  cursor: pointer;
+  background: var(--highlight-bg);
+  border-bottom: 1px solid #444;
+}
+.card-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.card-body {
+  display: none;
+  padding: 1rem;
+  background: #1a1a1a;
+}
+.card-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.card-body a:hover {
+  text-decoration: underline;
+}
+.highlight {
+  background: #333;
+  padding: 0.75rem;
+  border-left: 4px solid var(--accent);
+  margin: 0.5rem 0;
+  border-radius: 5px;
+}
+
+  </style>
+  <script>
+    function openInBrowser(url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="D-TECH Logo">
+    <h1>Empowering the Youth Through Digital Innovation</h1>
+  </header>
+  <div class="container" id="university-list">
+    <!-- Dynamic content here -->
+  </div>
+  <script>
+    fetch('data.json')
+      .then(res => res.json())
+      .then(data => {
+        const container = document.getElementById('university-list');data.forEach(u => {
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const header = document.createElement('div');
+      header.className = 'card-header';
+      header.innerHTML = `<h2>${u.name}</h2><p>${u.province}, ${u.city} - ${u.type}</p>`;
+
+      const body = document.createElement('div');
+      body.className = 'card-body';
+      body.innerHTML = `
+        <p><strong>Motto:</strong> ${u.motto || 'N/A'}</p>
+        <p><strong>Website:</strong> <a href="#" onclick="openInBrowser('${u.website}')">${u.website}</a></p>
+        <p><strong>Application:</strong> Opens ${u.application.open}, Closes ${u.application.close}, Fee: R${u.application.fee}, Late Allowed: ${u.application.lateAllowed ? 'Yes' : 'No'} | <a href="#" onclick="openInBrowser('${u.application.link}')">Apply Here</a></p>
+        <p><strong>Faculties:</strong> ${u.faculties.join(', ')}</p>
+        <p><strong>Language of Instruction:</strong> ${u.language}</p>
+        <p><strong>NSFAS:</strong> ${u.nsfas ? 'Accepted' : 'Not Accepted'}</p>
+        <p><strong>Bursary Info:</strong> <a href="#" onclick="openInBrowser('${u.bursaryLink}')">Click Here</a></p>
+        <p><strong>Residence Available:</strong> ${u.residence.available ? 'Yes' : 'No'}</p>
+        <p><strong>Campuses:</strong> ${u.campuses.join(', ')}</p>
+        <div>
+          <strong>Highlights:</strong>
+          ${u.highlights.map(h => `<div class="highlight">${h}</div>`).join('')}
+        </div>
+        <p><strong>Contact:</strong> ${u.contact.email}, ${u.contact.phone}, ${u.contact.address}</p>
+        <p><strong>Map:</strong> <a href="#" onclick="openInBrowser('${u.map}')">View Location</a></p>
+        <p><strong>Social:</strong> 
+          ${u.social.facebook ? `<a href="#" onclick="openInBrowser('${u.social.facebook}')">Facebook</a> ` : ''}
+          ${u.social.instagram ? `<a href="#" onclick="openInBrowser('${u.social.instagram}')">Instagram</a> ` : ''}
+          ${u.social.twitter ? `<a href="#" onclick="openInBrowser('${u.social.twitter}')">Twitter</a>` : ''}
+        </p>
+        <p><strong>Notes:</strong> ${u.notes || 'None'}</p>
+      `;
+
+      header.addEventListener('click', () => {
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+      });
+
+      card.appendChild(header);
+      card.appendChild(body);
+      container.appendChild(card);
+    });
+  });
+
+  </script>
+</body>
+</html>

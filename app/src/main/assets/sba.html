@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>SCHOOL BASED ASSESSMENT</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
+    body {
+      margin: 0;
+      font-family: 'Orbitron', sans-serif;
+      background: radial-gradient(ellipse at top, #0d0d0d, #000);
+      color: #ffffff;
+      overflow-x: hidden;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      padding: 10px 20px;
+      box-shadow: 0 0 20px #2196f3;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header .left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .logo {
+      height: 45px;
+      filter: drop-shadow(0 0 8px #00e5ff);
+    }
+    .slogan {
+      font-size: 14px;
+      font-weight: 500;
+      color: #cfd8dc;
+      text-shadow: 0 0 4px #00e5ff;
+    }
+    .support-button, .question-button {
+      background: linear-gradient(135deg, #00e5ff, #1e88e5);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 30px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: bold;
+      box-shadow: 0 0 15px #00e5ff;
+      transition: transform 0.2s, box-shadow 0.3s;
+    }
+    .support-button:hover, .question-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 25px #00e5ff;
+    }
+    h1 {
+      text-align: center;
+      margin-top: 40px;
+      color: #00e5ff;
+      font-size: 32px;
+      text-shadow: 0 0 10px #2196f3;
+    }
+    .result {
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+    .paper {
+      background: #1a1a1a;
+      border-left: 6px solid #00e5ff;
+      padding: 20px;
+      margin-bottom: 18px;
+      border-radius: 12px;
+      box-shadow: 0 0 12px #00e5ff55;
+      transition: transform 0.2s ease-in-out;
+    }
+    .paper:hover {
+      transform: scale(1.03);
+      box-shadow: 0 0 20px #00e5ffaa;
+    }
+    .paper a {
+      color: #4fc3f7;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .paper a:hover {
+      text-decoration: underline;
+      color: #00bcd4;
+    }
+    p {
+      text-align: center;
+      color: #aaa;
+    }
+    .extra-button-container {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left">
+      <img src="logo.png" alt="Logo" class="logo">
+      <span class="slogan">Empowering the youth through digital innovation</span>
+    </div>
+    <a href="https://cafewarriors.com/spymr251ew?key=ce76edf7e5c6e4907177e712dc143365" class="support-button" target="_blank">Support</a>
+  </header>
+
+  <h1>SCHOOL BASED ASSESSMENT</h1>
+
+  <div class="result" id="results">Loading...</div>
+
+  <div class="extra-button-container">
+    <a href="https://info.dtech24.co.za" class="question-button" target="_blank">Need Help or Can't Find a Paper?</a>
+  </div>
+
+  <script>
+    function handleDownload(fileUrl) {
+      // Step 1: Open the file in the default browser
+      window.location.href = fileUrl;
+
+      // Step 2: After 2 seconds, open the ad in a new tab
+      setTimeout(() => {
+        window.open("https://cafewarriors.com/spymr251ew?key=ce76edf7e5c6e4907177e712dc143365", "_blank");
+      }, 2000);
+    }
+
+    fetch('SBA.json')
+      .then(res => res.json())
+      .then(data => {
+        const results = data.map(p => `
+          <div class="paper">
+            <strong>${p.name}</strong><br>
+            <a href="#" onclick="handleDownload('${p.file}'); return false;">Download PDF</a>
+          </div>
+        `).join("");
+        document.getElementById("results").innerHTML = results || "<p>No papers found.</p>";
+      })
+      .catch(err => {
+        document.getElementById("results").innerHTML = "<p>Error loading SBA.json</p>";
+        console.error(err);
+      });
+  </script>
+</body>
+</html>

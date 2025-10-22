@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Physical Science Quizzes</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0e0e0e;
+      color: #fff;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 2rem;
+      background: #1c1c1c;
+      border-bottom: 2px solid #00d8ff;
+    }
+
+    header img {
+      height: 50px;
+    }
+
+    header .slogan {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #00d8ff;
+    }
+
+    main {
+      padding: 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      color: #00d8ff;
+      margin-bottom: 1rem;
+    }
+
+    .dropdowns {
+      margin: 2rem 0;
+    }
+
+    select, button {
+      padding: 10px;
+      margin: 0 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+    }
+
+    button {
+      background: #00d8ff;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #quiz-container {
+      display: none;
+      max-width: 700px;
+      margin: auto;
+      background: #1a1a1a;
+      padding: 2rem;
+      border-radius: 10px;
+    }
+
+    .question {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    .options button {
+      display: block;
+      width: 100%;
+      margin: 0.5rem 0;
+      padding: 10px;
+      background: #2a2a2a;
+      color: white;
+      border: 1px solid #00d8ff;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .options button:hover {
+      background: #00d8ff;
+      color: #000;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="slogan">Empowering the Youth Through Digital Innovation</div>
+    <img src="logo.png" alt="DTECH Logo">
+  </header>
+
+  <main>
+    <h1>Physical Science Quizzes</h1>
+
+    <div class="dropdowns">
+      <select id="subject">
+        <option value="">-- Select Subject --</option>
+        <option value="PYchem">Chemistry</option>
+        <option value="PYPh">Physics</option>
+      </select>
+
+      <select id="term">
+        <option value="">-- Select Term --</option>
+        <option value="term1">Term 1</option>
+        <option value="term2">Term 2</option>
+        <option value="term3">Term 3</option>
+        <option value="term4">Term 4</option>
+      </select>
+
+      <button id="start-btn">Start Quiz</button>
+    </div>
+
+    <div id="quiz-container">
+      <div id="question" class="question"></div>
+      <div id="options" class="options"></div>
+      <button id="next-btn" style="display:none;">Next</button>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2025 DTECH - Powered by Preasx24
+  </footer>
+
+  <script>
+    const startBtn = document.getElementById('start-btn');
+    const subjectSelect = document.getElementById('subject');
+    const termSelect = document.getElementById('term');
+    const quizContainer = document.getElementById('quiz-container');
+    const questionEl = document.getElementById('question');
+    const optionsEl = document.getElementById('options');
+    const nextBtn = document.getElementById('next-btn');
+
+    let questions = [];
+    let currentQuestionIndex = 0;
+    let score = 0;
+
+    startBtn.addEventListener('click', async () => {
+      const subject = subjectSelect.value;
+      const term = termSelect.value;
+
+      if (!subject || !term) {
+        alert('Please select both subject and term.');
+        return;
+      }
+
+      const fileURL = `https://raw.githubusercontent.com/Dtech2preas/100mb/main/${subject}/${term}.json`;
+
+      try {
+        const response = await fetch(fileURL);
+        if (!response.ok) throw new Error("Quiz file not found");
+
+        questions = await response.json();
+        currentQuestionIndex = 0;
+        score = 0;
+        startBtn.style.display = 'none';
+        subjectSelect.disabled = true;
+        termSelect.disabled = true;
+        quizContainer.style.display = 'block';
+        showQuestion();
+      } catch (err) {
+        alert("Unable to load quiz for selected options.");
+        console.error(err);
+      }
+    });
+
+    function showQuestion() {
+      const question = questions[currentQuestionIndex];
+      questionEl.textContent = question.question;
+      optionsEl.innerHTML = '';
+      question.options.forEach((opt, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = opt;
+        btn.onclick = () => selectAnswer(i);
+        optionsEl.appendChild(btn);
+      });
+    }
+
+    function selectAnswer(selected) {
+      const correct = questions[currentQuestionIndex].answer;
+      if (selected === correct) score++;
+
+      currentQuestionIndex++;
+      if (currentQuestionIndex < questions.length) {
+        showQuestion();
+      } else {
+        questionEl.textContent = `Quiz complete! You scored ${score} out of ${questions.length}.`;
+        optionsEl.innerHTML = '';
+        nextBtn.style.display = 'none';
+      }
+    }
+  </script>
+
+</body>
+</html>

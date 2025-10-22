@@ -1,0 +1,51 @@
+name: Build Android WebView App
+
+on:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v2
+
+      - name: Install SDK 34 and Build Tools
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Grant gradlew permission
+        run: chmod +x ./gradlew
+
+      - name: Install dependencies
+        run: ./gradlew build --refresh-dependencies
+
+      - name: Build debug APK
+        run: ./gradlew clean assembleDebug --stacktrace --info
+
+      - name: Copy APK to repo root
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/app-debug.apk release/webview-app.apk
+
+      - name: Commit & push APK
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add release/webview-app.apk
+          git commit -m "Add built APK"
+          git push

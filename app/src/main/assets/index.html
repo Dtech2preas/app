@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DTECH Education Hub</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(to bottom right, #0f172a, #1e293b);
+    }
+    .glow {
+      box-shadow: 0 0 20px #3b82f6, 0 0 30px #60a5fa;
+    }
+    .category-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 0 12px #3b82f6, 0 0 20px #60a5fa;
+    }
+    .slide-in {
+      animation: slideIn 1s ease-out forwards;
+      transform: translateY(30px);
+      opacity: 0;
+    }
+    @keyframes slideIn {
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+  </style>
+</head>
+<body class="font-sans text-white">
+  <header class="bg-gradient-to-r from-black via-blue-900 to-black p-6 shadow-lg slide-in">
+    <div class="container mx-auto flex items-center space-x-4">
+      <img src="logo.png" alt="DTECH Logo" class="h-14 w-14 rounded-full bg-white p-1 border-4 border-blue-400 shadow-lg pulse">
+      <div>
+        <h1 class="text-3xl font-extrabold tracking-wide text-blue-400">DTECH Education Hub</h1>
+        <p class="text-sm italic text-blue-200">Empowering the Youth Through Digital Innovation</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto p-6">
+    <section class="mb-8 slide-in">
+      <h2 class="text-2xl font-bold mb-4 text-blue-300">Explore Resources</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <a href="past-papers.html" class="category-button bg-blue-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">Past Papers</a>
+        <a href="study-guides.html" class="category-button bg-purple-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">Study Guides</a>
+        <a href="learners-guide.html" class="category-button bg-pink-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">Learner's Guide</a>
+        <a href="sba.html" class="category-button bg-green-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">SBA learners guide</a>
+        <a href="pats.html" class="category-button bg-yellow-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">PATs</a>
+        <a href="https://uni.dtech24.co.za" class="category-button bg-indigo-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">Eligibility Checker</a>
+        <a href="quizes.html" class="category-button bg-red-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">Quizzes</a>
+        <a href="nsfas.html" class="category-button bg-blue-500 rounded-lg p-4 text-center shadow-lg glow font-semibold">NSFAS Info</a>
+        <a href="university-applications.html" class="category-button bg-gray-700 rounded-lg p-4 text-center shadow-lg glow font-semibold">University Info</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-black text-white p-4 text-center mt-10 shadow-inner slide-in">
+    <p class="text-sm text-blue-300">Powered by <strong>Preasx24</strong> | DTECH 2025</p>
+  </footer>
+</body>
+</html>

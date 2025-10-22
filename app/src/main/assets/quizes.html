@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DTECH Quiz Hub</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0e0e0e;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 2rem;
+      background: #1c1c1c;
+      border-bottom: 2px solid #00d8ff;
+    }
+
+    header img {
+      height: 50px;
+    }
+
+    header .slogan {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #00d8ff;
+    }
+
+    main {
+      flex: 1;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 2rem;
+      font-size: 2.5rem;
+      color: #00d8ff;
+    }
+
+    .subjects {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .subjects a {
+      text-decoration: none;
+      background: #121212;
+      padding: 1.5rem;
+      border: 1px solid #00d8ff;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 1.2rem;
+      transition: 0.3s ease;
+    }
+
+    .subjects a:hover {
+      background: #00d8ff;
+      color: #0e0e0e;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="slogan">Empowering the Youth Through Digital Innovation</div>
+    <img src="logo.png" alt="DTECH Logo">
+  </header>
+
+  <main>
+    <h1>Select a Quiz Subject</h1>
+    <div class="subjects">
+      <a href="physical-science.html">Physical Science</a>
+      <a href="mathematics.html">Mathematics</a>
+      <a href="life-sciences.html">Life Sciences</a>
+      <a href="geography.html">Geography</a>
+      <a href="history.html">History</a>
+      <a href="business-studies.html">Business Studies</a>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2025 DTECH - Powered by Preasx24
+  </footer>
+</body>
+</html>

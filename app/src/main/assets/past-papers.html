@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Past Papers Search</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
+    body {
+      margin: 0;
+      font-family: 'Orbitron', sans-serif;
+      background: radial-gradient(ellipse at top, #0d0d0d, #000);
+      color: #ffffff;
+      overflow-x: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+      padding: 10px 20px;
+      box-shadow: 0 0 20px #2196f3;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header .left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .logo {
+      height: 45px;
+      filter: drop-shadow(0 0 8px #00e5ff);
+    }
+
+    .slogan {
+      font-size: 14px;
+      font-weight: 500;
+      color: #cfd8dc;
+      text-shadow: 0 0 4px #00e5ff;
+    }
+
+    .support-button {
+      background: linear-gradient(135deg, #00e5ff, #1e88e5);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 30px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: bold;
+      box-shadow: 0 0 15px #00e5ff;
+      transition: transform 0.2s, box-shadow 0.3s;
+    }
+
+    .support-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 25px #00e5ff;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 40px;
+      color: #00e5ff;
+      font-size: 32px;
+      text-shadow: 0 0 10px #2196f3;
+    }
+
+    #search {
+      display: block;
+      margin: 20px auto 10px;
+      max-width: 500px;
+      width: 90%;
+      padding: 14px;
+      font-size: 16px;
+      border: none;
+      border-radius: 50px;
+      outline: none;
+      box-shadow: 0 0 15px #00e5ff;
+      background: #1c1c1c;
+      color: #fff;
+      text-align: center;
+    }
+
+    #filters {
+      max-width: 500px;
+      margin: 10px auto 20px;
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    select {
+      padding: 10px 12px;
+      border-radius: 30px;
+      border: none;
+      background: #1c1c1c;
+      color: #fff;
+      box-shadow: 0 0 15px #00e5ff;
+      font-family: 'Orbitron', sans-serif;
+      cursor: pointer;
+      min-width: 120px;
+      text-align-last: center;
+    }
+
+    .result {
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+
+    .paper {
+      background: #1a1a1a;
+      border-left: 6px solid #00e5ff;
+      padding: 20px;
+      margin-bottom: 18px;
+      border-radius: 12px;
+      box-shadow: 0 0 12px #00e5ff55;
+      transition: transform 0.2s ease-in-out;
+    }
+
+    .paper:hover {
+      transform: scale(1.03);
+      box-shadow: 0 0 20px #00e5ffaa;
+    }
+
+    .paper a {
+      color: #4fc3f7;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .paper a:hover {
+      text-decoration: underline;
+      color: #00bcd4;
+    }
+
+    .info-box {
+      max-width: 700px;
+      margin: 10px auto 30px;
+      background: #1c1c1c;
+      padding: 20px;
+      border-left: 6px solid #00e5ff;
+      border-radius: 12px;
+      color: #ccc;
+      text-align: center;
+      box-shadow: 0 0 12px #00e5ff55;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="left">
+      <img src="logo.png" alt="Logo" class="logo">
+      <span class="slogan">Empowering the youth through digital innovation</span>
+    </div>
+    <a href="https://cafewarriors.com/spymr251ew?key=ce76edf7e5c6e4907177e712dc143365" class="support-button" target="_blank">Support</a>
+  </header>
+
+  <h1>Search Past Papers</h1>
+  <div class="info-box">
+    Includes 2024–2009 June & Nov exams and memos.
+  </div>
+
+  <input type="text" id="search" placeholder="Search by subject, year or topic...">
+
+  <div id="filters">
+    <select id="subject-filter" title="Filter by Subject">
+      <option value="">All Subjects</option>
+    </select>
+
+    <select id="date-filter" title="Filter by Exam Date">
+      <option value="">All Dates</option>
+      <option value="March">March</option>
+      <option value="June">June</option>
+      <option value="Nov">November</option>
+    </select>
+
+    <select id="year-filter" title="Filter by Year">
+      <option value="">All Years</option>
+      <option value="2024">2024</option>
+      <option value="2023">2023</option>
+      <option value="2022">2022</option>
+      <option value="2021">2021</option>
+      <option value="2020">2020</option>
+      <option value="2019">2019</option>
+      <option value="2018">2018</option>
+      <option value="2017">2017</option>
+      <option value="2016">2016</option>
+      <option value="2015">2015</option>
+    </select>
+  </div>
+
+  <div class="result" id="results"></div>
+
+  <script>
+    let papers = [];
+
+    async function loadData() {
+      const response = await fetch('papers.json'); // Replace with your JSON file
+      papers = await response.json();
+      populateSubjects();
+      filterPapers();
+    }
+
+    function populateSubjects() {
+      const subjects = new Set();
+      papers.forEach(p => {
+        let subject = p.name.split(" ")[0];
+        if (subject) subjects.add(subject);
+      });
+
+      const subjectFilter = document.getElementById("subject-filter");
+      subjects.forEach(subj => {
+        const option = document.createElement("option");
+        option.value = subj;
+        option.textContent = subj;
+        subjectFilter.appendChild(option);
+      });
+    }
+
+    function filterPapers() {
+      const query = document.getElementById("search").value.toLowerCase();
+      const subject = document.getElementById("subject-filter").value.toLowerCase();
+      const date = document.getElementById("date-filter").value.toLowerCase();
+      const year = document.getElementById("year-filter").value;
+
+      let filtered = papers;
+
+      if (query) {
+        filtered = filtered.filter(p =>
+          query.split(" ").every(word => p.name.toLowerCase().includes(word))
+        );
+      }
+
+      if (subject) {
+        filtered = filtered.filter(p => p.name.toLowerCase().startsWith(subject));
+      }
+
+      if (date) {
+        filtered = filtered.filter(p => p.name.toLowerCase().includes(date));
+      }
+
+      if (year) {
+        filtered = filtered.filter(p => p.name.includes(year));
+      }
+
+      const resultsContainer = document.getElementById("results");
+      resultsContainer.innerHTML = filtered.length
+        ? filtered.map(p => `
+          <div class="paper">
+            <a href="${p.file}" onclick="handleDownload('${p.file}'); return false;">${p.name}</a>
+          </div>`).join('')
+        : "<p>No results found.</p>";
+    }
+
+    function handleDownload(fileUrl) {
+      window.open("https://cafewarriors.com/spymr251ew?key=ce76edf7e5c6e4907177e712dc143365", "_blank");
+      const a = document.createElement('a');
+      a.href = fileUrl;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    document.getElementById("search").addEventListener("input", filterPapers);
+    document.getElementById("subject-filter").addEventListener("change", filterPapers);
+    document.getElementById("date-filter").addEventListener("change", filterPapers);
+    document.getElementById("year-filter").addEventListener("change", filterPapers);
+
+    loadData();
+  </script>
+</body>
+</html>
