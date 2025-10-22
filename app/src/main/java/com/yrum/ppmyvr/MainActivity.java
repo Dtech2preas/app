@@ -307,8 +307,11 @@ public class MainActivity extends Activity {
                         conn.setReadTimeout(30000);
                         conn.connect();
 
-                        if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: HTTP " + conn.getResponseCode(), Toast.LENGTH_LONG).show());
+                        // Fix: Extract response code to final variable before lambda
+                        final int responseCode = conn.getResponseCode();
+
+                        if (responseCode != HttpURLConnection.HTTP_OK) {
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show());
                             return;
                         }
 
@@ -327,9 +330,10 @@ public class MainActivity extends Activity {
                         }
                         out.flush();
 
-                        // Notify UI / webview that download is done by reloading local player if loaded
+                        // Fix: Create final copy of safeName for use in lambda
+                        final String finalSafeName = safeName;
                         runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Saved: " + safeName, Toast.LENGTH_LONG).show();
+                            Toast.makeText(MainActivity.this, "Saved: " + finalSafeName, Toast.LENGTH_LONG).show();
                             // If local player is loaded, call its JS refresh function (if present)
                             try {
                                 mWebView.evaluateJavascript("if(window.reloadLocalLibrary) reloadLocalLibrary();", null);
