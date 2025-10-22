@@ -1,12 +1,13 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 34
+    namespace "com.yrum.ppmyvr" // recommended for AGP 8+
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.yrum.ppmyvr"
-        minSdkVersion 21
-        targetSdkVersion 34
+        minSdk 21
+        targetSdk 34
         versionCode 56898
         versionName "1.25"
     }
@@ -17,6 +18,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
@@ -26,6 +36,6 @@ dependencies {
     implementation 'androidx.annotation:annotation:1.7.1'
     implementation 'androidx.core:core:1.12.0'
 
-    // Add DocumentFile support
+    // DocumentFile support
     implementation 'androidx.documentfile:documentfile:1.1.0'
 }
