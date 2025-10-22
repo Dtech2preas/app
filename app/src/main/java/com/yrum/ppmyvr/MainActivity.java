@@ -10,7 +10,6 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.DocumentsContract;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
@@ -34,7 +33,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -147,9 +145,18 @@ public class MainActivity extends Activity {
                 if (data != null) {
                     Uri treeUri = data.getData();
                     if (treeUri != null) {
-                        // Persist permission
-                        final int takeFlags = data.getFlags()
-                                & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        // Persist permission - FIXED: Use proper flag handling
+                        int takeFlags = data.getFlags();
+                        int desiredFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                        
+                        // Only take the flags that are both requested and available
+                        takeFlags = takeFlags & desiredFlags;
+                        
+                        // If no flags were granted, request both read and write
+                        if (takeFlags == 0) {
+                            takeFlags = desiredFlags;
+                        }
+                        
                         try {
                             getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
                         } catch (SecurityException se) {
