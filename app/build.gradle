@@ -1,6 +1,5 @@
 apply plugin: 'com.android.application'
 
-
 android {
     compileSdkVersion 34
 
@@ -23,7 +22,10 @@ android {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
-    // Compatible AndroidX dependencies
+    // AndroidX core dependencies
     implementation 'androidx.annotation:annotation:1.7.1'
     implementation 'androidx.core:core:1.12.0'
+
+    // Add DocumentFile support
+    implementation 'androidx.documentfile:documentfile:1.1.0'
 }
