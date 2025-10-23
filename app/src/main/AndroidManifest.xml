@@ -52,11 +52,5 @@
             </intent-filter>
         </receiver>
 
-        <!-- ✅ NEW: Media Playback Service (Optional - for background playback) -->
-        <service
-            android:name=".MediaPlaybackService"
-            android:enabled="true"
-            android:exported="false" />
-
     </application>
 </manifest>
