@@ -54,6 +54,13 @@ public class MainActivity extends Activity {
     private static final int NOTIFICATION_ID = 1;
     private NotificationManager notificationManager;
 
+    // Action constants
+    private static final String ACTION_PLAY = "PLAY";
+    private static final String ACTION_PAUSE = "PAUSE";
+    private static final String ACTION_STOP = "STOP";
+    private static final String ACTION_NEXT = "NEXT";
+    private static final String ACTION_PREVIOUS = "PREVIOUS";
+
     private WebView mWebView;
     private FrameLayout rootLayout;
     private Button localBtn;
@@ -78,6 +85,9 @@ public class MainActivity extends Activity {
         // Initialize notification
         createNotificationChannel();
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // Handle media actions from notification when app is launched
+        handleIntent(getIntent());
 
         // WebView setup
         WebSettings webSettings = mWebView.getSettings();
@@ -115,12 +125,40 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && intent.getAction() != null) {
+            String action = intent.getAction();
+            switch (action) {
+                case ACTION_PLAY:
+                    resumeSong();
+                    break;
+                case ACTION_PAUSE:
+                    pauseSong();
+                    break;
+                case ACTION_STOP:
+                    stopSong();
+                    break;
+                case ACTION_NEXT:
+                    Toast.makeText(this, "Next song", Toast.LENGTH_SHORT).show();
+                    break;
+                case ACTION_PREVIOUS:
+                    Toast.makeText(this, "Previous song", Toast.LENGTH_SHORT).show();
+                    break;
+            }
+        }
+    }
+
     private void checkAndCreateDefaultFolder() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean defaultFolderCreated = prefs.getBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, false);
         
         if (!defaultFolderCreated) {
-            // For all Android versions, we'll use the app's specific directory
             File musicDir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "SpotifyDL");
             if (!musicDir.exists()) {
                 musicDir.mkdirs();
@@ -215,15 +253,12 @@ public class MainActivity extends Activity {
     // Media playback methods
     private void playSong(String songUri, String songName) {
         try {
-            // For now, we'll use WebView audio playback via JavaScript
-            // In a full implementation, you'd use MediaPlayer here
             currentSongName = songName;
             currentSongUri = songUri;
             isPlaying = true;
             
             updateNotification();
             
-            // Show toast notification
             Toast.makeText(this, "Now playing: " + songName, Toast.LENGTH_SHORT).show();
             
         } catch (Exception e) {
@@ -268,32 +303,34 @@ public class MainActivity extends Activity {
         }
     }
 
+    @SuppressLint("UnspecifiedImmutableFlag")
     private void updateNotification() {
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-        // Create play/pause action
-        Intent playPauseIntent = new Intent(this, MediaActionReceiver.class);
-        playPauseIntent.setAction(isPlaying ? "PAUSE" : "PLAY");
-        PendingIntent playPausePendingIntent = PendingIntent.getBroadcast(this, 0, playPauseIntent, PendingIntent.FLAG_IMMUTABLE);
+        // Create media action intents that launch the activity directly
+        Intent playIntent = new Intent(this, MainActivity.class);
+        playIntent.setAction(ACTION_PLAY);
+        PendingIntent playPendingIntent = PendingIntent.getActivity(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Create stop action
-        Intent stopIntent = new Intent(this, MediaActionReceiver.class);
-        stopIntent.setAction("STOP");
-        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE);
+        Intent pauseIntent = new Intent(this, MainActivity.class);
+        pauseIntent.setAction(ACTION_PAUSE);
+        PendingIntent pausePendingIntent = PendingIntent.getActivity(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Create next action
-        Intent nextIntent = new Intent(this, MediaActionReceiver.class);
-        nextIntent.setAction("NEXT");
-        PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE);
+        Intent stopIntent = new Intent(this, MainActivity.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPendingIntent = PendingIntent.getActivity(this, 3, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Create previous action
-        Intent prevIntent = new Intent(this, MediaActionReceiver.class);
-        prevIntent.setAction("PREVIOUS");
-        PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE);
+        Intent nextIntent = new Intent(this, MainActivity.class);
+        nextIntent.setAction(ACTION_NEXT);
+        PendingIntent nextPendingIntent = PendingIntent.getActivity(this, 4, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Use standard notification style instead of MediaStyle
+        Intent prevIntent = new Intent(this, MainActivity.class);
+        prevIntent.setAction(ACTION_PREVIOUS);
+        PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        // Build notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
@@ -304,13 +341,13 @@ public class MainActivity extends Activity {
                 .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Pause", playPausePendingIntent);
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent);
         } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Play", playPausePendingIntent);
+            builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
         }
 
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent); // Use custom stop icon
+               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
 
         Notification notification = builder.build();
         notificationManager.notify(NOTIFICATION_ID, notification);
@@ -318,29 +355,6 @@ public class MainActivity extends Activity {
 
     private void removeNotification() {
         notificationManager.cancel(NOTIFICATION_ID);
-    }
-
-    // Handle media actions from notification
-    public void handleMediaAction(String action) {
-        switch (action) {
-            case "PLAY":
-                resumeSong();
-                break;
-            case "PAUSE":
-                pauseSong();
-                break;
-            case "STOP":
-                stopSong();
-                break;
-            case "NEXT":
-                // Implement next song logic
-                Toast.makeText(this, "Next song", Toast.LENGTH_SHORT).show();
-                break;
-            case "PREVIOUS":
-                // Implement previous song logic
-                Toast.makeText(this, "Previous song", Toast.LENGTH_SHORT).show();
-                break;
-        }
     }
 
     // JavaScript bridge
@@ -547,7 +561,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Keep notification alive when app is in background
         if (isPlaying) {
             updateNotification();
         }
