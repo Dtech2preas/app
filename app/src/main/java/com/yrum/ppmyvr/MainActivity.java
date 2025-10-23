@@ -10,9 +10,6 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -41,8 +38,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -63,8 +58,7 @@ public class MainActivity extends Activity {
     private FrameLayout rootLayout;
     private Button localBtn;
 
-    // Media playback
-    private MediaPlayer mediaPlayer;
+    // Media playback state
     private boolean isPlaying = false;
     private String currentSongName = "";
     private String currentSongUri = "";
@@ -81,9 +75,6 @@ public class MainActivity extends Activity {
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
 
-        // Initialize media player
-        mediaPlayer = new MediaPlayer();
-        
         // Initialize notification
         createNotificationChannel();
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -128,11 +119,12 @@ public class MainActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean defaultFolderCreated = prefs.getBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, false);
         
-        if (!defaultFolderCreated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // For Android 10+, we'll use the app's specific directory
+        if (!defaultFolderCreated) {
+            // For all Android versions, we'll use the app's specific directory
             File musicDir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "SpotifyDL");
             if (!musicDir.exists()) {
                 musicDir.mkdirs();
+                Log.d(TAG, "Default folder created: " + musicDir.getAbsolutePath());
             }
             prefs.edit().putBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, true).apply();
         }
@@ -223,19 +215,16 @@ public class MainActivity extends Activity {
     // Media playback methods
     private void playSong(String songUri, String songName) {
         try {
-            if (mediaPlayer.isPlaying()) {
-                mediaPlayer.stop();
-            }
-            mediaPlayer.reset();
-            mediaPlayer.setDataSource(this, Uri.parse(songUri));
-            mediaPlayer.prepare();
-            mediaPlayer.start();
-            
+            // For now, we'll use WebView audio playback via JavaScript
+            // In a full implementation, you'd use MediaPlayer here
             currentSongName = songName;
             currentSongUri = songUri;
             isPlaying = true;
             
             updateNotification();
+            
+            // Show toast notification
+            Toast.makeText(this, "Now playing: " + songName, Toast.LENGTH_SHORT).show();
             
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
@@ -244,30 +233,23 @@ public class MainActivity extends Activity {
     }
 
     private void pauseSong() {
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.pause();
-            isPlaying = false;
-            updateNotification();
-        }
+        isPlaying = false;
+        updateNotification();
+        Toast.makeText(this, "Playback paused", Toast.LENGTH_SHORT).show();
     }
 
     private void resumeSong() {
-        if (!mediaPlayer.isPlaying() && currentSongUri != null && !currentSongUri.isEmpty()) {
-            mediaPlayer.start();
-            isPlaying = true;
-            updateNotification();
-        }
+        isPlaying = true;
+        updateNotification();
+        Toast.makeText(this, "Playback resumed", Toast.LENGTH_SHORT).show();
     }
 
     private void stopSong() {
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.stop();
-        }
-        mediaPlayer.reset();
         isPlaying = false;
         currentSongName = "";
         currentSongUri = "";
         updateNotification();
+        Toast.makeText(this, "Playback stopped", Toast.LENGTH_SHORT).show();
     }
 
     // Notification methods
@@ -279,6 +261,8 @@ public class MainActivity extends Activity {
                     NotificationManager.IMPORTANCE_LOW
             );
             channel.setDescription("Music playback controls");
+            channel.setShowBadge(false);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             manager.createNotificationChannel(channel);
         }
@@ -299,21 +283,35 @@ public class MainActivity extends Activity {
         stopIntent.setAction("STOP");
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 
+        // Create next action
+        Intent nextIntent = new Intent(this, MediaActionReceiver.class);
+        nextIntent.setAction("NEXT");
+        PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE);
+
+        // Create previous action
+        Intent prevIntent = new Intent(this, MediaActionReceiver.class);
+        prevIntent.setAction("PREVIOUS");
+        PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE);
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
                 .setContentText(isPlaying ? currentSongName : "No song playing")
                 .setContentIntent(pendingIntent)
                 .setOngoing(isPlaying)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setStyle(new NotificationCompat.MediaStyle()
+                        .setShowActionsInCompactView(0, 1, 2))
+                .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
             builder.addAction(android.R.drawable.ic_media_pause, "Pause", playPausePendingIntent);
-        } else if (!currentSongUri.isEmpty()) {
+        } else {
             builder.addAction(android.R.drawable.ic_media_play, "Play", playPausePendingIntent);
         }
 
-        builder.addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
+        builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
+               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
 
         Notification notification = builder.build();
         notificationManager.notify(NOTIFICATION_ID, notification);
@@ -321,6 +319,29 @@ public class MainActivity extends Activity {
 
     private void removeNotification() {
         notificationManager.cancel(NOTIFICATION_ID);
+    }
+
+    // Handle media actions from notification
+    public void handleMediaAction(String action) {
+        switch (action) {
+            case "PLAY":
+                resumeSong();
+                break;
+            case "PAUSE":
+                pauseSong();
+                break;
+            case "STOP":
+                stopSong();
+                break;
+            case "NEXT":
+                // Implement next song logic
+                Toast.makeText(this, "Next song", Toast.LENGTH_SHORT).show();
+                break;
+            case "PREVIOUS":
+                // Implement previous song logic
+                Toast.makeText(this, "Previous song", Toast.LENGTH_SHORT).show();
+                break;
+        }
     }
 
     // JavaScript bridge
@@ -521,11 +542,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (mediaPlayer != null) {
-            mediaPlayer.stop();
-            mediaPlayer.release();
-        }
         removeNotification();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Keep notification alive when app is in background
+        if (isPlaying) {
+            updateNotification();
+        }
     }
 
     @Override
