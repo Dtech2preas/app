@@ -232,6 +232,11 @@
             margin-bottom: 15px;
             opacity: 0.5;
         }
+
+        /* Hidden audio element */
+        #audioPlayer {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -259,10 +264,10 @@
                 </div>
 
                 <div class="controls">
-                    <button class="control-btn" onclick="previousSong()">⏮</button>
+                    <button class="control-btn" onclick="playPreviousSong()">⏮</button>
                     <button class="control-btn play-btn" onclick="togglePlayPause()" id="playPauseBtn">▶</button>
-                    <button class="control-btn" onclick="nextSong()">⏭</button>
-                    <button class="control-btn" onclick="stopSong()">⏹</button>
+                    <button class="control-btn" onclick="playNextSong()">⏭</button>
+                    <button class="control-btn" onclick="stopPlayback()">⏹</button>
                 </div>
 
                 <div class="status stopped" id="playerStatus">
@@ -288,15 +293,47 @@
         </div>
     </div>
 
+    <!-- Audio element for playback -->
+    <audio id="audioPlayer" controls></audio>
+
     <script>
         let songs = [];
         let currentSongIndex = -1;
+        let audioPlayer = document.getElementById('audioPlayer');
+        let isPlaying = false;
 
         // Load songs when page loads
         document.addEventListener('DOMContentLoaded', function() {
             loadSongs();
-            updatePlayerStatus();
+            setupAudioPlayer();
         });
+
+        function setupAudioPlayer() {
+            audioPlayer.addEventListener('loadedmetadata', function() {
+                updateTimeDisplay();
+            });
+
+            audioPlayer.addEventListener('timeupdate', function() {
+                updateProgress();
+                updateTimeDisplay();
+            });
+
+            audioPlayer.addEventListener('ended', function() {
+                playNextSong();
+            });
+
+            audioPlayer.addEventListener('play', function() {
+                isPlaying = true;
+                updatePlayButton();
+                updatePlayerStatus('Now playing', 'playing');
+            });
+
+            audioPlayer.addEventListener('pause', function() {
+                isPlaying = false;
+                updatePlayButton();
+                updatePlayerStatus('Paused', 'paused');
+            });
+        }
 
         function loadSongs() {
             try {
@@ -336,61 +373,120 @@
             if (!song) return;
 
             Android.playSong(song.uri, song.name);
-            currentSongIndex = index;
-            
-            // Update UI
-            document.getElementById('currentSongTitle').textContent = song.name;
-            document.getElementById('playerStatus').textContent = 'Now playing';
-            document.getElementById('playerStatus').className = 'status playing';
-            document.getElementById('playPauseBtn').textContent = '⏸';
-            
-            // Update indicators
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
-            document.getElementById(`indicator-${index}`).style.display = 'inline';
-            
-            updatePlayerStatus();
         }
 
-        function togglePlayPause() {
-            if (Android.isPlaying()) {
-                Android.pauseSong();
-                document.getElementById('playPauseBtn').textContent = '▶';
-                document.getElementById('playerStatus').textContent = 'Paused';
-                document.getElementById('playerStatus').className = 'status paused';
-            } else {
-                if (currentSongIndex === -1 && songs.length > 0) {
-                    playSong(0);
-                } else {
-                    Android.resumeSong();
-                    document.getElementById('playPauseBtn').textContent = '⏸';
-                    document.getElementById('playerStatus').textContent = 'Now playing';
-                    document.getElementById('playerStatus').className = 'status playing';
-                }
+        // This function is called from Android to play audio from data URL
+        function playAudioFromDataUrl(dataUrl, songName) {
+            try {
+                audioPlayer.src = dataUrl;
+                audioPlayer.play().then(() => {
+                    currentSongIndex = songs.findIndex(song => song.name === songName);
+                    updateUI(songName);
+                    updatePlayerStatus('Now playing', 'playing');
+                }).catch(error => {
+                    console.error('Error playing audio:', error);
+                    showError('Error playing audio');
+                });
+            } catch (error) {
+                console.error('Error setting audio source:', error);
+                showError('Error playing audio');
             }
         }
 
-        function stopSong() {
-            Android.stopSong();
-            document.getElementById('playPauseBtn').textContent = '▶';
-            document.getElementById('playerStatus').textContent = 'Player stopped';
-            document.getElementById('playerStatus').className = 'status stopped';
-            document.getElementById('currentSongTitle').textContent = 'No song selected';
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
-            currentSongIndex = -1;
+        function pauseAudio() {
+            audioPlayer.pause();
         }
 
-        function previousSong() {
+        function resumeAudio() {
+            audioPlayer.play();
+        }
+
+        function stopAudio() {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+            currentSongIndex = -1;
+            updatePlayerStatus('Player stopped', 'stopped');
+            document.getElementById('currentSongTitle').textContent = 'No song selected';
+            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+        }
+
+        function togglePlayPause() {
+            if (audioPlayer.paused) {
+                if (audioPlayer.src) {
+                    audioPlayer.play();
+                } else if (songs.length > 0) {
+                    playSong(0);
+                }
+            } else {
+                audioPlayer.pause();
+            }
+        }
+
+        function stopPlayback() {
+            Android.stopSong();
+        }
+
+        function playPreviousSong() {
             if (songs.length === 0) return;
             let newIndex = currentSongIndex - 1;
             if (newIndex < 0) newIndex = songs.length - 1;
             playSong(newIndex);
         }
 
-        function nextSong() {
+        function playNextSong() {
             if (songs.length === 0) return;
             let newIndex = currentSongIndex + 1;
             if (newIndex >= songs.length) newIndex = 0;
             playSong(newIndex);
+        }
+
+        function updateUI(songName) {
+            document.getElementById('currentSongTitle').textContent = songName;
+            updatePlayButton();
+            
+            // Update indicators
+            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+            if (currentSongIndex >= 0) {
+                document.getElementById(`indicator-${currentSongIndex}`).style.display = 'inline';
+            }
+        }
+
+        function updatePlayButton() {
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+        }
+
+        function updatePlayerStatus(status, className) {
+            const statusElement = document.getElementById('playerStatus');
+            statusElement.textContent = status;
+            statusElement.className = `status ${className}`;
+        }
+
+        function updateProgress() {
+            const progressBar = document.getElementById('progressBar');
+            if (audioPlayer.duration) {
+                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                progressBar.style.width = progress + '%';
+            }
+        }
+
+        function updateTimeDisplay() {
+            const currentTime = document.getElementById('currentTime');
+            const totalTime = document.getElementById('totalTime');
+            
+            if (audioPlayer.duration) {
+                currentTime.textContent = formatTime(audioPlayer.currentTime);
+                totalTime.textContent = formatTime(audioPlayer.duration);
+            } else {
+                currentTime.textContent = '0:00';
+                totalTime.textContent = '0:00';
+            }
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
         function chooseFolder() {
@@ -402,13 +498,7 @@
             showMessage('Library refreshed');
         }
 
-        function updatePlayerStatus() {
-            // This would be enhanced with actual playback progress in a real implementation
-            setTimeout(updatePlayerStatus, 1000);
-        }
-
         function showMessage(message) {
-            // Simple message display - could be enhanced with toast notifications
             console.log(message);
         }
 
@@ -416,11 +506,17 @@
             console.error(message);
         }
 
-        // Make this function available for Android to call
+        // Make these functions available for Android to call
         window.reloadLocalLibrary = function() {
             loadSongs();
             showMessage('New songs downloaded!');
         };
+
+        window.playNextSong = playNextSong;
+        window.playPreviousSong = playPreviousSong;
+        window.pauseAudio = pauseAudio;
+        window.resumeAudio = resumeAudio;
+        window.stopAudio = stopAudio;
     </script>
 </body>
 </html>
