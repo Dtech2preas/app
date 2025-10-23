@@ -96,6 +96,7 @@ public class MainActivity extends Activity {
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
         webSettings.setDatabaseEnabled(true);
+        webSettings.setMediaPlaybackRequiresUserGesture(false); // Allow auto-play
 
         mWebView.setWebViewClient(new WebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
@@ -118,7 +119,7 @@ public class MainActivity extends Activity {
         // Check and create default folder if needed
         checkAndCreateDefaultFolder();
 
-        // If no folder selected yet, prompt (deferred to avoid blocking UI)
+        // If no folder selected yet, prompt (deferred to blocking UI)
         String treeUri = getSavedTreeUri();
         if (treeUri == null || treeUri.isEmpty()) {
             promptUserToChooseFolder();
@@ -145,9 +146,13 @@ public class MainActivity extends Activity {
                     stopSong();
                     break;
                 case ACTION_NEXT:
+                    // Call JavaScript to play next song
+                    mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
                     Toast.makeText(this, "Next song", Toast.LENGTH_SHORT).show();
                     break;
                 case ACTION_PREVIOUS:
+                    // Call JavaScript to play previous song
+                    mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
                     Toast.makeText(this, "Previous song", Toast.LENGTH_SHORT).show();
                     break;
             }
@@ -257,9 +262,27 @@ public class MainActivity extends Activity {
             currentSongUri = songUri;
             isPlaying = true;
             
-            updateNotification();
-            
-            Toast.makeText(this, "Now playing: " + songName, Toast.LENGTH_SHORT).show();
+            // Get the song as data URL and play it via JavaScript
+            new Thread(() -> {
+                try {
+                    String dataUrl = getSongDataUrl(songUri);
+                    if (!dataUrl.isEmpty()) {
+                        final String jsCode = String.format(
+                            "if(window.playAudioFromDataUrl) playAudioFromDataUrl('%s', '%s');",
+                            dataUrl.replace("'", "\\'"),
+                            songName.replace("'", "\\'")
+                        );
+                        runOnUiThread(() -> {
+                            mWebView.evaluateJavascript(jsCode, null);
+                            updateNotification();
+                            Toast.makeText(MainActivity.this, "Now playing: " + songName, Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error preparing song: " + e.getMessage());
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
+                }
+            }).start();
             
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
@@ -269,12 +292,16 @@ public class MainActivity extends Activity {
 
     private void pauseSong() {
         isPlaying = false;
+        // Call JavaScript to pause audio
+        mWebView.evaluateJavascript("if(window.pauseAudio) pauseAudio();", null);
         updateNotification();
         Toast.makeText(this, "Playback paused", Toast.LENGTH_SHORT).show();
     }
 
     private void resumeSong() {
         isPlaying = true;
+        // Call JavaScript to resume audio
+        mWebView.evaluateJavascript("if(window.resumeAudio) resumeAudio();", null);
         updateNotification();
         Toast.makeText(this, "Playback resumed", Toast.LENGTH_SHORT).show();
     }
@@ -283,8 +310,39 @@ public class MainActivity extends Activity {
         isPlaying = false;
         currentSongName = "";
         currentSongUri = "";
+        // Call JavaScript to stop audio
+        mWebView.evaluateJavascript("if(window.stopAudio) stopAudio();", null);
         updateNotification();
         Toast.makeText(this, "Playback stopped", Toast.LENGTH_SHORT).show();
+    }
+
+    // Helper method to get song as data URL
+    private String getSongDataUrl(String docUriString) {
+        InputStream in = null;
+        ByteArrayOutputStream baos = null;
+        try {
+            Uri uri = Uri.parse(docUriString);
+            ContentResolver resolver = getContentResolver();
+            in = resolver.openInputStream(uri);
+            if (in == null) return "";
+
+            baos = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                baos.write(buffer, 0, read);
+            }
+            byte[] bytes = baos.toByteArray();
+            String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
+            String dataUrl = "data:audio/mpeg;base64," + base64;
+            return dataUrl;
+        } catch (Exception e) {
+            Log.e(TAG, "getSongDataUrl error: " + e.getMessage());
+            return "";
+        } finally {
+            try { if (in != null) in.close(); } catch (Exception ignored) {}
+            try { if (baos != null) baos.close(); } catch (Exception ignored) {}
+        }
     }
 
     // Notification methods
@@ -409,31 +467,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getSongDataUrl(String docUriString) {
-            InputStream in = null;
-            ByteArrayOutputStream baos = null;
-            try {
-                Uri uri = Uri.parse(docUriString);
-                ContentResolver resolver = getContentResolver();
-                in = resolver.openInputStream(uri);
-                if (in == null) return "";
-
-                baos = new ByteArrayOutputStream();
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    baos.write(buffer, 0, read);
-                }
-                byte[] bytes = baos.toByteArray();
-                String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
-                String dataUrl = "data:audio/mpeg;base64," + base64;
-                return dataUrl;
-            } catch (Exception e) {
-                Log.e(TAG, "getSongDataUrl error: " + e.getMessage());
-                return "";
-            } finally {
-                try { if (in != null) in.close(); } catch (Exception ignored) {}
-                try { if (baos != null) baos.close(); } catch (Exception ignored) {}
-            }
+            return MainActivity.this.getSongDataUrl(docUriString);
         }
 
         // Media control methods
