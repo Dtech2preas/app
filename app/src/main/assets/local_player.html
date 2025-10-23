@@ -1,121 +1,426 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Local Library</title>
-  <style>
-    body { background:#0f0f10; color:#fff; font-family: sans-serif; padding:16px; }
-    h1 { font-size:18px; margin-bottom:8px; }
-    #songs { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
-    .song { padding:10px; background:rgba(255,255,255,0.03); border-radius:6px; display:flex; justify-content:space-between; align-items:center; }
-    .btn { padding:6px 10px; border-radius:6px; border:0; background:#1DB954; color:#000; cursor:pointer; }
-    .small { padding:6px 8px; background:#222; color:#fff; border-radius:6px; }
-    #playerBar { display:flex; gap:8px; align-items:center; margin-top:16px; }
-    audio { width:100%; }
-    .controls { display:flex; gap:8px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Music Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .player-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .now-playing {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .song-info h2 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .song-info p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .control-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            color: white;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .control-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .play-btn {
+            width: 70px;
+            height: 70px;
+            font-size: 1.8em;
+        }
+
+        .library-section {
+            margin-top: 30px;
+        }
+
+        .section-title {
+            color: white;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+
+        .songs-list {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .song-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .song-item:hover {
+            background: #f8f9fa;
+            transform: translateX(5px);
+        }
+
+        .song-item:last-child {
+            border-bottom: none;
+        }
+
+        .song-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .play-indicator {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .folder-section {
+            margin-top: 20px;
+        }
+
+        .folder-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .folder-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .status.playing {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.paused {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .status.stopped {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 3em;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+    </style>
 </head>
 <body>
-  <h1>Local Library</h1>
-  <div>
-    <button class="small" onclick="chooseFolder()">Choose Folder</button>
-    <button class="small" onclick="refresh()">Refresh List</button>
-  </div>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Music Player</h1>
+            <p>Your personal music collection</p>
+        </div>
 
-  <div id="songs"><em>Loading...</em></div>
+        <div class="player-card">
+            <div class="now-playing">
+                <div class="song-info">
+                    <h2 id="currentSongTitle">No song selected</h2>
+                    <p id="currentSongStatus">Tap on a song to play</p>
+                </div>
+                
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress" id="progressBar"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalTime">0:00</span>
+                    </div>
+                </div>
 
-  <div id="playerBar" style="display:none;">
-    <div style="flex:1"><strong id="title">—</strong><br/><small id="artist">—</small></div>
-    <div style="flex:2">
-      <audio id="audio" controls></audio>
+                <div class="controls">
+                    <button class="control-btn" onclick="previousSong()">⏮</button>
+                    <button class="control-btn play-btn" onclick="togglePlayPause()" id="playPauseBtn">▶</button>
+                    <button class="control-btn" onclick="nextSong()">⏭</button>
+                    <button class="control-btn" onclick="stopSong()">⏹</button>
+                </div>
+
+                <div class="status stopped" id="playerStatus">
+                    Player stopped
+                </div>
+            </div>
+        </div>
+
+        <div class="library-section">
+            <h2 class="section-title">Your Music Library</h2>
+            
+            <div class="folder-section">
+                <button class="folder-btn" onclick="chooseFolder()">📁 Choose Music Folder</button>
+                <button class="folder-btn" onclick="refreshLibrary()">🔄 Refresh Library</button>
+            </div>
+
+            <div class="songs-list" id="songsList">
+                <div class="empty-state">
+                    <div>📀</div>
+                    <p>No songs found. Choose a folder to get started.</p>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-<script>
-  async function chooseFolder(){
-    try { if (Android && Android.chooseFolder) Android.chooseFolder(); else if (Android && Android.chooseFolder) Android.chooseFolder(); }
-    catch(e){ alert('chooseFolder not available'); }
-  }
+    <script>
+        let songs = [];
+        let currentSongIndex = -1;
 
-  function refresh(){
-    loadSongs();
-  }
+        // Load songs when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSongs();
+            updatePlayerStatus();
+        });
 
-  // load list from the Java bridge
-  function loadSongs(){
-    try {
-      const json = Android.getDownloadedSongs(); // returns JSON string
-      const songs = JSON.parse(json || '[]');
-      renderSongs(songs);
-    } catch (err){
-      document.getElementById('songs').innerHTML = '<div style="color:#f88">Unable to read library</div>';
-      console.error(err);
-    }
-  }
-
-  function renderSongs(list){
-    const container = document.getElementById('songs');
-    container.innerHTML = '';
-    if (!list || list.length === 0) {
-      container.innerHTML = '<div style="opacity:0.7">No songs found in chosen folder.<br/>Use "Choose Folder" to pick the folder where songs are stored.</div>';
-      document.getElementById('playerBar').style.display='none';
-      return;
-    }
-
-    list.forEach((s, idx) => {
-      const el = document.createElement('div');
-      el.className = 'song';
-      el.innerHTML = `<div style="flex:1"><strong>${escapeHtml(s.name)}</strong></div>
-                      <div style="display:flex;gap:8px">
-                        <button class="btn" onclick="playSong('${encodeURIComponent(s.uri)}','${escapeHtml(s.name)}')">Play</button>
-                        <button class="small" onclick="downloadToApp('${encodeURIComponent(s.uri)}')">Reload</button>
-                      </div>`;
-      container.appendChild(el);
-    });
-  }
-
-  // Ask the Android bridge for a data URL for the selected doc URI, then set audio.src
-  function playSong(encodedUri, name){
-    const docUri = decodeURIComponent(encodedUri);
-    document.getElementById('title').textContent = name;
-    document.getElementById('artist').textContent = '';
-    document.getElementById('playerBar').style.display = 'flex';
-    const audio = document.getElementById('audio');
-    audio.src = ''; // reset while loading
-    setTimeout(() => {
-      try {
-        // getSongDataUrl may take time; it returns a (possibly large) data URL synchronously from Java
-        const dataUrl = Android.getSongDataUrl(docUri);
-        if (dataUrl && dataUrl.length > 0) {
-          audio.src = dataUrl;
-          audio.play().catch(e => console.error(e));
-        } else {
-          alert('Failed to load song data from device.');
+        function loadSongs() {
+            try {
+                const songsJson = Android.getDownloadedSongs();
+                songs = JSON.parse(songsJson);
+                displaySongs();
+            } catch (error) {
+                console.error('Error loading songs:', error);
+                showError('Error loading songs');
+            }
         }
-      } catch (err){
-        console.error(err);
-        alert('Playback failed: ' + err.message);
-      }
-    }, 50);
-  }
 
-  // Helper: in case web site saved songs we want to reload, simply refresh list
-  function downloadToApp(encodedUri){
-    // This is a convenience: if you want to re-copy or verify file, just refresh list
-    loadSongs();
-    alert('Refreshed list. If file was recently added, it should appear.');
-  }
+        function displaySongs() {
+            const songsList = document.getElementById('songsList');
+            
+            if (songs.length === 0) {
+                songsList.innerHTML = `
+                    <div class="empty-state">
+                        <div>📀</div>
+                        <p>No songs found in selected folder.</p>
+                        <p style="margin-top: 10px; font-size: 0.9em;">Make sure you've selected a folder with music files.</p>
+                    </div>
+                `;
+                return;
+            }
 
-  // helper: called by Java when a download completed in the main webview
-  function reloadLocalLibrary(){
-    loadSongs();
-  }
+            songsList.innerHTML = songs.map((song, index) => `
+                <div class="song-item" onclick="playSong(${index})">
+                    <span class="song-name">${song.name}</span>
+                    <span class="play-indicator" id="indicator-${index}" style="display: none;">▶ Playing</span>
+                </div>
+            `).join('');
+        }
 
-  function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        function playSong(index) {
+            const song = songs[index];
+            if (!song) return;
 
-  // initial load
-  loadSongs();
-</script>
+            Android.playSong(song.uri, song.name);
+            currentSongIndex = index;
+            
+            // Update UI
+            document.getElementById('currentSongTitle').textContent = song.name;
+            document.getElementById('playerStatus').textContent = 'Now playing';
+            document.getElementById('playerStatus').className = 'status playing';
+            document.getElementById('playPauseBtn').textContent = '⏸';
+            
+            // Update indicators
+            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+            document.getElementById(`indicator-${index}`).style.display = 'inline';
+            
+            updatePlayerStatus();
+        }
+
+        function togglePlayPause() {
+            if (Android.isPlaying()) {
+                Android.pauseSong();
+                document.getElementById('playPauseBtn').textContent = '▶';
+                document.getElementById('playerStatus').textContent = 'Paused';
+                document.getElementById('playerStatus').className = 'status paused';
+            } else {
+                if (currentSongIndex === -1 && songs.length > 0) {
+                    playSong(0);
+                } else {
+                    Android.resumeSong();
+                    document.getElementById('playPauseBtn').textContent = '⏸';
+                    document.getElementById('playerStatus').textContent = 'Now playing';
+                    document.getElementById('playerStatus').className = 'status playing';
+                }
+            }
+        }
+
+        function stopSong() {
+            Android.stopSong();
+            document.getElementById('playPauseBtn').textContent = '▶';
+            document.getElementById('playerStatus').textContent = 'Player stopped';
+            document.getElementById('playerStatus').className = 'status stopped';
+            document.getElementById('currentSongTitle').textContent = 'No song selected';
+            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+            currentSongIndex = -1;
+        }
+
+        function previousSong() {
+            if (songs.length === 0) return;
+            let newIndex = currentSongIndex - 1;
+            if (newIndex < 0) newIndex = songs.length - 1;
+            playSong(newIndex);
+        }
+
+        function nextSong() {
+            if (songs.length === 0) return;
+            let newIndex = currentSongIndex + 1;
+            if (newIndex >= songs.length) newIndex = 0;
+            playSong(newIndex);
+        }
+
+        function chooseFolder() {
+            Android.chooseFolder();
+        }
+
+        function refreshLibrary() {
+            loadSongs();
+            showMessage('Library refreshed');
+        }
+
+        function updatePlayerStatus() {
+            // This would be enhanced with actual playback progress in a real implementation
+            setTimeout(updatePlayerStatus, 1000);
+        }
+
+        function showMessage(message) {
+            // Simple message display - could be enhanced with toast notifications
+            console.log(message);
+        }
+
+        function showError(message) {
+            console.error(message);
+        }
+
+        // Make this function available for Android to call
+        window.reloadLocalLibrary = function() {
+            loadSongs();
+            showMessage('New songs downloaded!');
+        };
+    </script>
 </body>
 </html>
