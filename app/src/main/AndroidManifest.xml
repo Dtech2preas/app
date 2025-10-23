@@ -12,9 +12,7 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     
-    <!-- ✅ NEW: Media and Notification Permissions -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Notification Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
@@ -28,21 +26,14 @@
         <activity
             android:name="com.yrum.ppmyvr.MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-
-        <!-- ✅ NEW: Ad Popup Activity -->
-        <activity android:name="com.yrum.ppmyvr.PopupWebViewActivity" />
-
-        <!-- ✅ NEW: Media Action Receiver for Notification Controls -->
-        <receiver 
-            android:name=".MediaActionReceiver"
-            android:enabled="true"
-            android:exported="false">
+            
+            <!-- Media action intents -->
             <intent-filter>
                 <action android:name="PLAY" />
                 <action android:name="PAUSE" />
@@ -50,7 +41,10 @@
                 <action android:name="NEXT" />
                 <action android:name="PREVIOUS" />
             </intent-filter>
-        </receiver>
+        </activity>
+
+        <!-- Ad Popup Activity -->
+        <activity android:name="com.yrum.ppmyvr.PopupWebViewActivity" />
 
     </application>
 </manifest>
