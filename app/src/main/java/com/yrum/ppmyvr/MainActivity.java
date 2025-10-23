@@ -6,11 +6,9 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -18,7 +16,6 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.IBinder;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
@@ -38,7 +35,6 @@ import androidx.documentfile.provider.DocumentFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -379,7 +375,7 @@ public class MainActivity extends Activity {
         prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Build professional music player notification
+        // Build professional music player notification without MediaStyle
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
@@ -387,8 +383,6 @@ public class MainActivity extends Activity {
                 .setContentIntent(pendingIntent)
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2))
                 .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
@@ -397,30 +391,15 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
         }
 
+        // Use ic_delete for stop button since ic_media_stop doesn't exist
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
+               .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
 
-        // Start foreground service behavior (without actual Service)
-        if (isPlaying) {
-            startForeground(NOTIFICATION_ID, builder.build());
-        } else {
-            notificationManager.notify(NOTIFICATION_ID, builder.build());
-        }
-    }
-
-    // Simulate foreground service behavior
-    private void startForeground(int id, Notification notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(new Intent(this, MainActivity.class));
-        }
-        notificationManager.notify(id, notification);
+        notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
 
     private void removeNotification() {
         notificationManager.cancel(NOTIFICATION_ID);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stopForeground(true);
-        }
     }
 
     // JavaScript bridge
@@ -505,18 +484,30 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public int getCurrentPosition() {
-            return mediaPlayer.getCurrentPosition();
+            try {
+                return mediaPlayer.getCurrentPosition();
+            } catch (Exception e) {
+                return 0;
+            }
         }
 
         @JavascriptInterface
         public int getDuration() {
-            return mediaPlayer.getDuration();
+            try {
+                return mediaPlayer.getDuration();
+            } catch (Exception e) {
+                return 0;
+            }
         }
 
         @JavascriptInterface
         public void seekTo(int position) {
-            if (isPrepared) {
-                mediaPlayer.seekTo(position);
+            try {
+                if (isPrepared) {
+                    mediaPlayer.seekTo(position);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error seeking: " + e.getMessage());
             }
         }
 
