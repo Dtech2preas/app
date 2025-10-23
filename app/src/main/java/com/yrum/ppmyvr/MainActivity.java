@@ -2,18 +2,25 @@ package com.yrum.ppmyvr;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
-import android.view.View;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
@@ -25,14 +32,17 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
-
+import androidx.core.app.NotificationCompat;
 import androidx.documentfile.provider.DocumentFile;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -42,10 +52,22 @@ public class MainActivity extends Activity {
     private static final int REQUEST_CODE_OPEN_DIRECTORY = 1002;
     private static final String PREFS_NAME = "spotifydl_prefs";
     private static final String PREFS_KEY_TREE_URI = "default_tree_uri";
+    private static final String PREFS_KEY_DEFAULT_FOLDER_CREATED = "default_folder_created";
+
+    // Notification
+    private static final String CHANNEL_ID = "music_player_channel";
+    private static final int NOTIFICATION_ID = 1;
+    private NotificationManager notificationManager;
 
     private WebView mWebView;
     private FrameLayout rootLayout;
     private Button localBtn;
+
+    // Media playback
+    private MediaPlayer mediaPlayer;
+    private boolean isPlaying = false;
+    private String currentSongName = "";
+    private String currentSongUri = "";
 
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://dtech.preasx24.co.za";
@@ -54,10 +76,17 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // your existing layout
+        setContentView(R.layout.activity_main);
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Initialize media player
+        mediaPlayer = new MediaPlayer();
+        
+        // Initialize notification
+        createNotificationChannel();
+        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         // WebView setup
         WebSettings webSettings = mWebView.getSettings();
@@ -70,12 +99,11 @@ public class MainActivity extends Activity {
         mWebView.setWebViewClient(new WebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
 
-        // Download listener (if user clicks a raw file link in website we intercept and save into chosen folder)
+        // Download listener
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 String guessed = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                // delegate to bridge to download into chosen folder
                 new AndroidBridge(MainActivity.this).downloadSong(url, guessed);
             }
         });
@@ -86,19 +114,35 @@ public class MainActivity extends Activity {
         // Load website
         mWebView.loadUrl(mainUrl);
 
+        // Check and create default folder if needed
+        checkAndCreateDefaultFolder();
+
         // If no folder selected yet, prompt (deferred to avoid blocking UI)
         String treeUri = getSavedTreeUri();
         if (treeUri == null || treeUri.isEmpty()) {
-            // prompt user to pick folder
             promptUserToChooseFolder();
         }
     }
 
+    private void checkAndCreateDefaultFolder() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        boolean defaultFolderCreated = prefs.getBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, false);
+        
+        if (!defaultFolderCreated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // For Android 10+, we'll use the app's specific directory
+            File musicDir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "SpotifyDL");
+            if (!musicDir.exists()) {
+                musicDir.mkdirs();
+            }
+            prefs.edit().putBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, true).apply();
+        }
+    }
+
     private void addLocalLibraryButton() {
-        // Create a simple floating button programmatically and add to root layout
         localBtn = new Button(this);
         localBtn.setText("Local Library");
         localBtn.setAllCaps(false);
+        localBtn.setBackgroundResource(android.R.drawable.btn_default);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -109,7 +153,6 @@ public class MainActivity extends Activity {
         rootLayout.addView(localBtn, lp);
 
         localBtn.setOnClickListener(v -> {
-            // Load the local player HTML from assets
             mWebView.loadUrl("file:///android_asset/local_player.html");
         });
     }
@@ -119,14 +162,11 @@ public class MainActivity extends Activity {
         return Math.round((float) dp * density);
     }
 
-    // Launch SAF folder picker
     private void promptUserToChooseFolder() {
         try {
             Intent intent = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-                // optional: start at Downloads
-                // intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
                 startActivityForResult(intent, REQUEST_CODE_OPEN_DIRECTORY);
             } else {
                 Toast.makeText(this, "Folder picking requires Android 5.0+", Toast.LENGTH_LONG).show();
@@ -145,14 +185,11 @@ public class MainActivity extends Activity {
                 if (data != null) {
                     Uri treeUri = data.getData();
                     if (treeUri != null) {
-                        // Persist permission - FIXED: Use proper flag handling
                         int takeFlags = data.getFlags();
                         int desiredFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
                         
-                        // Only take the flags that are both requested and available
                         takeFlags = takeFlags & desiredFlags;
                         
-                        // If no flags were granted, request both read and write
                         if (takeFlags == 0) {
                             takeFlags = desiredFlags;
                         }
@@ -183,6 +220,109 @@ public class MainActivity extends Activity {
         return prefs.getString(PREFS_KEY_TREE_URI, null);
     }
 
+    // Media playback methods
+    private void playSong(String songUri, String songName) {
+        try {
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.stop();
+            }
+            mediaPlayer.reset();
+            mediaPlayer.setDataSource(this, Uri.parse(songUri));
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+            
+            currentSongName = songName;
+            currentSongUri = songUri;
+            isPlaying = true;
+            
+            updateNotification();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error playing song: " + e.getMessage());
+            Toast.makeText(this, "Error playing song", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void pauseSong() {
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.pause();
+            isPlaying = false;
+            updateNotification();
+        }
+    }
+
+    private void resumeSong() {
+        if (!mediaPlayer.isPlaying() && currentSongUri != null && !currentSongUri.isEmpty()) {
+            mediaPlayer.start();
+            isPlaying = true;
+            updateNotification();
+        }
+    }
+
+    private void stopSong() {
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+        }
+        mediaPlayer.reset();
+        isPlaying = false;
+        currentSongName = "";
+        currentSongUri = "";
+        updateNotification();
+    }
+
+    // Notification methods
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "Music Player",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Music playback controls");
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    private void updateNotification() {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        // Create play/pause action
+        Intent playPauseIntent = new Intent(this, MediaActionReceiver.class);
+        playPauseIntent.setAction(isPlaying ? "PAUSE" : "PLAY");
+        PendingIntent playPausePendingIntent = PendingIntent.getBroadcast(this, 0, playPauseIntent, PendingIntent.FLAG_IMMUTABLE);
+
+        // Create stop action
+        Intent stopIntent = new Intent(this, MediaActionReceiver.class);
+        stopIntent.setAction("STOP");
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
+                .setContentText(isPlaying ? currentSongName : "No song playing")
+                .setContentIntent(pendingIntent)
+                .setOngoing(isPlaying)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+        if (isPlaying) {
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause", playPausePendingIntent);
+        } else if (!currentSongUri.isEmpty()) {
+            builder.addAction(android.R.drawable.ic_media_play, "Play", playPausePendingIntent);
+        }
+
+        builder.addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
+
+        Notification notification = builder.build();
+        notificationManager.notify(NOTIFICATION_ID, notification);
+    }
+
+    private void removeNotification() {
+        notificationManager.cancel(NOTIFICATION_ID);
+    }
+
     // JavaScript bridge
     public class AndroidBridge {
         private final Context ctx;
@@ -193,7 +333,6 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void chooseFolder() {
-            // Called from JS to re-open folder chooser
             runOnUiThread(() -> promptUserToChooseFolder());
         }
 
@@ -203,7 +342,6 @@ public class MainActivity extends Activity {
             return uri == null ? "" : uri;
         }
 
-        // Returns JSON array of { name: "...", uri: "document://..." }
         @JavascriptInterface
         public String getDownloadedSongs() {
             try {
@@ -218,7 +356,6 @@ public class MainActivity extends Activity {
                 for (DocumentFile file : pickedDir.listFiles()) {
                     if (file.isFile()) {
                         String name = file.getName();
-                        // optional: filter audio extensions
                         if (name != null && (name.toLowerCase().endsWith(".mp3") || name.toLowerCase().endsWith(".m4a") ||
                                 name.toLowerCase().endsWith(".wav") || name.toLowerCase().endsWith(".ogg"))) {
                             JSONObject o = new JSONObject();
@@ -235,7 +372,6 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Returns a data URL (base64) for the given document Uri string so the HTML audio tag can play it
         @JavascriptInterface
         public String getSongDataUrl(String docUriString) {
             InputStream in = null;
@@ -254,7 +390,6 @@ public class MainActivity extends Activity {
                 }
                 byte[] bytes = baos.toByteArray();
                 String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
-                // We return a data URL; set mime to audio/mpeg (best-effort)
                 String dataUrl = "data:audio/mpeg;base64," + base64;
                 return dataUrl;
             } catch (Exception e) {
@@ -266,10 +401,39 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Download a remote URL and save into chosen folder with given filename
+        // Media control methods
+        @JavascriptInterface
+        public void playSong(String songUri, String songName) {
+            runOnUiThread(() -> MainActivity.this.playSong(songUri, songName));
+        }
+
+        @JavascriptInterface
+        public void pauseSong() {
+            runOnUiThread(() -> MainActivity.this.pauseSong());
+        }
+
+        @JavascriptInterface
+        public void resumeSong() {
+            runOnUiThread(() -> MainActivity.this.resumeSong());
+        }
+
+        @JavascriptInterface
+        public void stopSong() {
+            runOnUiThread(() -> MainActivity.this.stopSong());
+        }
+
+        @JavascriptInterface
+        public boolean isPlaying() {
+            return isPlaying;
+        }
+
+        @JavascriptInterface
+        public String getCurrentSong() {
+            return currentSongName;
+        }
+
         @JavascriptInterface
         public void downloadSong(final String urlString, final String suggestedFileName) {
-            // Run in background
             AsyncTask.execute(() -> {
                 try {
                     String tree = getSavedTreeUri();
@@ -284,17 +448,14 @@ public class MainActivity extends Activity {
                         return;
                     }
 
-                    // determine a safe file name
                     String safeName = suggestedFileName;
                     if (safeName == null || safeName.trim().isEmpty()) {
                         safeName = URLUtil.guessFileName(urlString, null, null);
                     }
 
-                    // create file in folder (overwrite if exists: delete then create)
                     DocumentFile existing = pickedDir.findFile(safeName);
                     if (existing != null) existing.delete();
 
-                    // create new file (audio/*)
                     DocumentFile newFile = pickedDir.createFile("audio/mpeg", safeName);
 
                     if (newFile == null) {
@@ -302,7 +463,6 @@ public class MainActivity extends Activity {
                         return;
                     }
 
-                    // download from network and write to the DocumentFile's OutputStream
                     HttpURLConnection conn = null;
                     InputStream in = null;
                     OutputStream out = null;
@@ -314,7 +474,6 @@ public class MainActivity extends Activity {
                         conn.setReadTimeout(30000);
                         conn.connect();
 
-                        // Fix: Extract response code to final variable before lambda
                         final int responseCode = conn.getResponseCode();
 
                         if (responseCode != HttpURLConnection.HTTP_OK) {
@@ -337,11 +496,9 @@ public class MainActivity extends Activity {
                         }
                         out.flush();
 
-                        // Fix: Create final copy of safeName for use in lambda
                         final String finalSafeName = safeName;
                         runOnUiThread(() -> {
                             Toast.makeText(MainActivity.this, "Saved: " + finalSafeName, Toast.LENGTH_LONG).show();
-                            // If local player is loaded, call its JS refresh function (if present)
                             try {
                                 mWebView.evaluateJavascript("if(window.reloadLocalLibrary) reloadLocalLibrary();", null);
                             } catch (Exception ignored) {}
@@ -361,7 +518,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    // back-button behavior unchanged
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.release();
+        }
+        removeNotification();
+    }
+
     @Override
     public void onBackPressed() {
         if (mWebView != null && mWebView.canGoBack()) {
