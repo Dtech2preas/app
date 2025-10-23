@@ -293,6 +293,7 @@ public class MainActivity extends Activity {
         prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE);
 
+        // Use standard notification style instead of MediaStyle
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
@@ -300,8 +301,6 @@ public class MainActivity extends Activity {
                 .setContentIntent(pendingIntent)
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setStyle(new NotificationCompat.MediaStyle()
-                        .setShowActionsInCompactView(0, 1, 2))
                 .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
@@ -311,7 +310,7 @@ public class MainActivity extends Activity {
         }
 
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
+               .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent); // Use custom stop icon
 
         Notification notification = builder.build();
         notificationManager.notify(NOTIFICATION_ID, notification);
