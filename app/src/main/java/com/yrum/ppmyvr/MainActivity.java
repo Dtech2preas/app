@@ -330,7 +330,7 @@ public class MainActivity extends Activity {
         prevIntent.setAction(ACTION_PREVIOUS);
         PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Build notification
+        // Build notification - use available icons
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
@@ -346,8 +346,9 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
         }
 
+        // Use a simple square icon for stop since ic_media_stop doesn't exist
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
+               .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
 
         Notification notification = builder.build();
         notificationManager.notify(NOTIFICATION_ID, notification);
