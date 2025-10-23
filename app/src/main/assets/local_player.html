@@ -5,74 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Music Player</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             color: #333;
         }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            color: white;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .player-card {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        .now-playing {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .song-info h2 {
-            font-size: 1.5em;
-            margin-bottom: 10px;
-            color: #333;
-        }
-
-        .song-info p {
-            color: #666;
-            font-size: 1.1em;
-        }
-
-        .controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 20px;
-            margin: 25px 0;
-        }
-
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; color: white; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .header p { font-size: 1.1em; opacity: 0.9; }
+        .player-card { background: white; border-radius: 20px; padding: 30px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .now-playing { text-align: center; margin-bottom: 30px; }
+        .song-info h2 { font-size: 1.5em; margin-bottom: 10px; color: #333; }
+        .song-info p { color: #666; font-size: 1.1em; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 20px; margin: 25px 0; }
         .control-btn {
             background: linear-gradient(135deg, #667eea, #764ba2);
             border: none;
@@ -85,39 +33,17 @@
             transition: all 0.3s ease;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
-
-        .control-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-        }
-
-        .control-btn:active {
-            transform: scale(0.95);
-        }
-
-        .play-btn {
-            width: 70px;
-            height: 70px;
-            font-size: 1.8em;
-        }
-
-        .library-section {
-            margin-top: 30px;
-        }
-
-        .section-title {
-            color: white;
-            margin-bottom: 15px;
-            font-size: 1.4em;
-        }
-
+        .control-btn:hover { transform: scale(1.1); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+        .control-btn:active { transform: scale(0.95); }
+        .play-btn { width: 70px; height: 70px; font-size: 1.8em; }
+        .library-section { margin-top: 30px; }
+        .section-title { color: white; margin-bottom: 15px; font-size: 1.4em; }
         .songs-list {
             background: white;
             border-radius: 15px;
             overflow: hidden;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
-
         .song-item {
             padding: 15px 20px;
             border-bottom: 1px solid #eee;
@@ -127,30 +53,11 @@
             justify-content: space-between;
             align-items: center;
         }
-
-        .song-item:hover {
-            background: #f8f9fa;
-            transform: translateX(5px);
-        }
-
-        .song-item:last-child {
-            border-bottom: none;
-        }
-
-        .song-name {
-            font-weight: 500;
-            color: #333;
-        }
-
-        .play-indicator {
-            color: #667eea;
-            font-weight: bold;
-        }
-
-        .folder-section {
-            margin-top: 20px;
-        }
-
+        .song-item:hover { background: #f8f9fa; transform: translateX(5px); }
+        .song-item:last-child { border-bottom: none; }
+        .song-name { font-weight: 500; color: #333; }
+        .play-indicator { color: #667eea; font-weight: bold; }
+        .folder-section { margin-top: 20px; }
         .folder-btn {
             background: rgba(255,255,255,0.2);
             border: 2px solid white;
@@ -162,361 +69,213 @@
             transition: all 0.3s ease;
             margin-right: 10px;
         }
-
-        .folder-btn:hover {
-            background: white;
-            color: #667eea;
-        }
-
-        .status {
-            margin-top: 15px;
-            padding: 10px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: 500;
-        }
-
-        .status.playing {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status.paused {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .status.stopped {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .progress-container {
-            margin: 20px 0;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e9ecef;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .progress {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            width: 0%;
-            transition: width 0.1s ease;
-        }
-
-        .time-display {
-            display: flex;
-            justify-content: space-between;
-            color: #666;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-
-        .empty-state i {
-            font-size: 3em;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-
-        /* Hidden audio element */
-        #audioPlayer {
-            display: none;
-        }
+        .folder-btn:hover { background: white; color: #667eea; }
+        .status { margin-top: 15px; padding: 10px; border-radius: 10px; text-align: center; font-weight: 500; }
+        .status.playing { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.paused { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .status.stopped { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .progress-container { margin: 20px 0; }
+        .progress-bar { width: 100%; height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+        .progress { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.1s ease; }
+        .time-display { display: flex; justify-content: space-between; color: #666; font-size: 0.9em; margin-top: 5px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        .empty-state i { font-size: 3em; margin-bottom: 15px; opacity: 0.5; }
+        #audioPlayer { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎵 Music Player</h1>
-            <p>Your personal music collection</p>
-        </div>
+<div class="container">
+    <div class="header">
+        <h1>🎵 Music Player</h1>
+        <p>Your personal music collection</p>
+    </div>
 
-        <div class="player-card">
-            <div class="now-playing">
-                <div class="song-info">
-                    <h2 id="currentSongTitle">No song selected</h2>
-                    <p id="currentSongStatus">Tap on a song to play</p>
-                </div>
-                
-                <div class="progress-container">
-                    <div class="progress-bar">
-                        <div class="progress" id="progressBar"></div>
-                    </div>
-                    <div class="time-display">
-                        <span id="currentTime">0:00</span>
-                        <span id="totalTime">0:00</span>
-                    </div>
-                </div>
-
-                <div class="controls">
-                    <button class="control-btn" onclick="playPreviousSong()">⏮</button>
-                    <button class="control-btn play-btn" onclick="togglePlayPause()" id="playPauseBtn">▶</button>
-                    <button class="control-btn" onclick="playNextSong()">⏭</button>
-                    <button class="control-btn" onclick="stopPlayback()">⏹</button>
-                </div>
-
-                <div class="status stopped" id="playerStatus">
-                    Player stopped
-                </div>
-            </div>
-        </div>
-
-        <div class="library-section">
-            <h2 class="section-title">Your Music Library</h2>
-            
-            <div class="folder-section">
-                <button class="folder-btn" onclick="chooseFolder()">📁 Choose Music Folder</button>
-                <button class="folder-btn" onclick="refreshLibrary()">🔄 Refresh Library</button>
+    <div class="player-card">
+        <div class="now-playing">
+            <div class="song-info">
+                <h2 id="currentSongTitle">No song selected</h2>
+                <p id="currentSongStatus">Tap on a song to play</p>
             </div>
 
-            <div class="songs-list" id="songsList">
-                <div class="empty-state">
-                    <div>📀</div>
-                    <p>No songs found. Choose a folder to get started.</p>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress" id="progressBar"></div>
                 </div>
+                <div class="time-display">
+                    <span id="currentTime">0:00</span>
+                    <span id="totalTime">0:00</span>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button class="control-btn" onclick="playPreviousSong()">⏮</button>
+                <button class="control-btn play-btn" onclick="togglePlayPause()" id="playPauseBtn">▶</button>
+                <button class="control-btn" onclick="playNextSong()">⏭</button>
+                <button class="control-btn" onclick="stopPlayback()">⏹</button>
+            </div>
+
+            <div class="status stopped" id="playerStatus">
+                Player stopped
             </div>
         </div>
     </div>
 
-    <!-- Audio element for playback -->
-    <audio id="audioPlayer" controls></audio>
+    <div class="library-section">
+        <h2 class="section-title">Your Music Library</h2>
 
-    <script>
-        let songs = [];
-        let currentSongIndex = -1;
-        let audioPlayer = document.getElementById('audioPlayer');
-        let isPlaying = false;
+        <div class="folder-section">
+            <button class="folder-btn" onclick="chooseFolder()">📁 Choose Music Folder</button>
+            <button class="folder-btn" onclick="refreshLibrary()">🔄 Refresh Library</button>
+        </div>
 
-        // Load songs when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSongs();
-            setupAudioPlayer();
-        });
+        <div class="songs-list" id="songsList">
+            <div class="empty-state">
+                <div>📀</div>
+                <p>No songs found. Choose a folder to get started.</p>
+            </div>
+        </div>
+    </div>
+</div>
 
-        function setupAudioPlayer() {
-            audioPlayer.addEventListener('loadedmetadata', function() {
-                updateTimeDisplay();
-            });
+<audio id="audioPlayer" controls></audio>
 
-            audioPlayer.addEventListener('timeupdate', function() {
-                updateProgress();
-                updateTimeDisplay();
-            });
+<script>
+    let songs = [];
+    let currentSongIndex = -1;
+    let audioPlayer = document.getElementById('audioPlayer');
+    let isPlaying = false;
 
-            audioPlayer.addEventListener('ended', function() {
-                playNextSong();
-            });
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSongs();
+        setupAudioPlayer();
+    });
 
-            audioPlayer.addEventListener('play', function() {
-                isPlaying = true;
-                updatePlayButton();
-                updatePlayerStatus('Now playing', 'playing');
-            });
+    function setupAudioPlayer() {
+        audioPlayer.addEventListener('loadedmetadata', function() { updateTimeDisplay(); });
+        audioPlayer.addEventListener('timeupdate', function() { updateProgress(); updateTimeDisplay(); });
+        audioPlayer.addEventListener('ended', function() { playNextSong(); });
+        audioPlayer.addEventListener('play', function() { isPlaying = true; updatePlayButton(); updatePlayerStatus('Now playing', 'playing'); });
+        audioPlayer.addEventListener('pause', function() { isPlaying = false; updatePlayButton(); updatePlayerStatus('Paused', 'paused'); });
+    }
 
-            audioPlayer.addEventListener('pause', function() {
-                isPlaying = false;
-                updatePlayButton();
-                updatePlayerStatus('Paused', 'paused');
-            });
+    function loadSongs() {
+        try {
+            const songsJson = Android.getDownloadedSongs();
+            songs = JSON.parse(songsJson);
+            displaySongs();
+        } catch (error) {
+            console.error('Error loading songs:', error);
+            showError('Error loading songs');
         }
+    }
 
-        function loadSongs() {
-            try {
-                const songsJson = Android.getDownloadedSongs();
-                songs = JSON.parse(songsJson);
-                displaySongs();
-            } catch (error) {
-                console.error('Error loading songs:', error);
-                showError('Error loading songs');
-            }
-        }
-
-        function displaySongs() {
-            const songsList = document.getElementById('songsList');
-            
-            if (songs.length === 0) {
-                songsList.innerHTML = `
-                    <div class="empty-state">
-                        <div>📀</div>
-                        <p>No songs found in selected folder.</p>
-                        <p style="margin-top: 10px; font-size: 0.9em;">Make sure you've selected a folder with music files.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            songsList.innerHTML = songs.map((song, index) => `
-                <div class="song-item" onclick="playSong(${index})">
-                    <span class="song-name">${song.name}</span>
-                    <span class="play-indicator" id="indicator-${index}" style="display: none;">▶ Playing</span>
+    function displaySongs() {
+        const songsList = document.getElementById('songsList');
+        if (songs.length === 0) {
+            songsList.innerHTML = `
+                <div class="empty-state">
+                    <div>📀</div>
+                    <p>No songs found in selected folder.</p>
+                    <p style="margin-top: 10px; font-size: 0.9em;">Make sure you've selected a folder with music files.</p>
                 </div>
-            `).join('');
+            `;
+            return;
+        }
+        songsList.innerHTML = songs.map((song, index) => `
+            <div class="song-item" onclick="playSong(${index})">
+                <span class="song-name">${song.name}</span>
+                <span class="play-indicator" id="indicator-${index}" style="display: none;">▶ Playing</span>
+            </div>
+        `).join('');
+    }
+
+    function playSong(index) {
+        const song = songs[index];
+        if (!song) return;
+        Android.playSong(song.uri, song.name);
+    }
+
+    function playAudioFromDataUrl(dataUrl, songName) {
+        try {
+            audioPlayer.src = dataUrl;
+            audioPlayer.play().then(() => {
+                currentSongIndex = songs.findIndex(song => song.name === songName);
+                updateUI(songName);
+                updatePlayerStatus('Now playing', 'playing');
+                updateNowPlayingMediaSession(songName); // Media Session update
+            }).catch(error => { console.error('Error playing audio:', error); showError('Error playing audio'); });
+        } catch (error) {
+            console.error('Error setting audio source:', error);
+            showError('Error playing audio');
+        }
+    }
+
+    function pauseAudio() { audioPlayer.pause(); }
+    function resumeAudio() { audioPlayer.play(); }
+    function stopAudio() {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+        currentSongIndex = -1;
+        updatePlayerStatus('Player stopped', 'stopped');
+        document.getElementById('currentSongTitle').textContent = 'No song selected';
+        document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+    }
+
+    function togglePlayPause() {
+        if (audioPlayer.paused) { if (audioPlayer.src) audioPlayer.play(); else if (songs.length>0) playSong(0); }
+        else audioPlayer.pause();
+    }
+
+    function stopPlayback() { Android.stopSong(); }
+    function playPreviousSong() { if (songs.length===0) return; let newIndex = currentSongIndex-1; if (newIndex<0) newIndex=songs.length-1; playSong(newIndex); }
+    function playNextSong() { if (songs.length===0) return; let newIndex = currentSongIndex+1; if (newIndex>=songs.length) newIndex=0; playSong(newIndex); }
+
+    function updateUI(songName) {
+        document.getElementById('currentSongTitle').textContent = songName;
+        updatePlayButton();
+        document.querySelectorAll('.play-indicator').forEach(ind=>ind.style.display='none');
+        if(currentSongIndex>=0) document.getElementById(`indicator-${currentSongIndex}`).style.display='inline';
+    }
+
+    function updatePlayButton() { document.getElementById('playPauseBtn').textContent = isPlaying?'⏸':'▶'; }
+    function updatePlayerStatus(status, className) { const s=document.getElementById('playerStatus'); s.textContent=status; s.className=`status ${className}`; }
+    function updateProgress() { if(audioPlayer.duration) document.getElementById('progressBar').style.width = (audioPlayer.currentTime/audioPlayer.duration)*100 + '%'; }
+    function updateTimeDisplay() {
+        const currentTime=document.getElementById('currentTime'), totalTime=document.getElementById('totalTime');
+        currentTime.textContent = audioPlayer.duration?formatTime(audioPlayer.currentTime):'0:00';
+        totalTime.textContent = audioPlayer.duration?formatTime(audioPlayer.duration):'0:00';
+    }
+    function formatTime(s){ return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
+    function chooseFolder() { Android.chooseFolder(); }
+    function refreshLibrary() { loadSongs(); showMessage('Library refreshed'); }
+    function showMessage(msg){ console.log(msg); }
+    function showError(msg){ console.error(msg); }
+
+    window.reloadLocalLibrary = function(){ loadSongs(); showMessage('New songs downloaded!'); };
+    window.playNextSong=playNextSong; window.playPreviousSong=playPreviousSong; window.pauseAudio=pauseAudio; window.resumeAudio=resumeAudio; window.stopAudio=stopAudio;
+
+    // ------------------ MEDIA SESSION API ------------------
+    if ('mediaSession' in navigator) {
+        function updateMediaSessionMetadata(songName, artworkUrl) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: songName,
+                artist: 'Your Music Collection',
+                album: 'Local Library',
+                artwork: [{ src: artworkUrl || 'default-artwork.png', sizes: '512x512', type: 'image/png' }]
+            });
         }
 
-        function playSong(index) {
-            const song = songs[index];
-            if (!song) return;
+        navigator.mediaSession.setActionHandler('play', resumeAudio);
+        navigator.mediaSession.setActionHandler('pause', pauseAudio);
+        navigator.mediaSession.setActionHandler('previoustrack', playPreviousSong);
+        navigator.mediaSession.setActionHandler('nexttrack', playNextSong);
+        navigator.mediaSession.setActionHandler('stop', stopAudio);
+    }
 
-            Android.playSong(song.uri, song.name);
-        }
-
-        // This function is called from Android to play audio from data URL
-        function playAudioFromDataUrl(dataUrl, songName) {
-            try {
-                audioPlayer.src = dataUrl;
-                audioPlayer.play().then(() => {
-                    currentSongIndex = songs.findIndex(song => song.name === songName);
-                    updateUI(songName);
-                    updatePlayerStatus('Now playing', 'playing');
-                }).catch(error => {
-                    console.error('Error playing audio:', error);
-                    showError('Error playing audio');
-                });
-            } catch (error) {
-                console.error('Error setting audio source:', error);
-                showError('Error playing audio');
-            }
-        }
-
-        function pauseAudio() {
-            audioPlayer.pause();
-        }
-
-        function resumeAudio() {
-            audioPlayer.play();
-        }
-
-        function stopAudio() {
-            audioPlayer.pause();
-            audioPlayer.currentTime = 0;
-            currentSongIndex = -1;
-            updatePlayerStatus('Player stopped', 'stopped');
-            document.getElementById('currentSongTitle').textContent = 'No song selected';
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
-        }
-
-        function togglePlayPause() {
-            if (audioPlayer.paused) {
-                if (audioPlayer.src) {
-                    audioPlayer.play();
-                } else if (songs.length > 0) {
-                    playSong(0);
-                }
-            } else {
-                audioPlayer.pause();
-            }
-        }
-
-        function stopPlayback() {
-            Android.stopSong();
-        }
-
-        function playPreviousSong() {
-            if (songs.length === 0) return;
-            let newIndex = currentSongIndex - 1;
-            if (newIndex < 0) newIndex = songs.length - 1;
-            playSong(newIndex);
-        }
-
-        function playNextSong() {
-            if (songs.length === 0) return;
-            let newIndex = currentSongIndex + 1;
-            if (newIndex >= songs.length) newIndex = 0;
-            playSong(newIndex);
-        }
-
-        function updateUI(songName) {
-            document.getElementById('currentSongTitle').textContent = songName;
-            updatePlayButton();
-            
-            // Update indicators
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
-            if (currentSongIndex >= 0) {
-                document.getElementById(`indicator-${currentSongIndex}`).style.display = 'inline';
-            }
-        }
-
-        function updatePlayButton() {
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
-        }
-
-        function updatePlayerStatus(status, className) {
-            const statusElement = document.getElementById('playerStatus');
-            statusElement.textContent = status;
-            statusElement.className = `status ${className}`;
-        }
-
-        function updateProgress() {
-            const progressBar = document.getElementById('progressBar');
-            if (audioPlayer.duration) {
-                const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
-                progressBar.style.width = progress + '%';
-            }
-        }
-
-        function updateTimeDisplay() {
-            const currentTime = document.getElementById('currentTime');
-            const totalTime = document.getElementById('totalTime');
-            
-            if (audioPlayer.duration) {
-                currentTime.textContent = formatTime(audioPlayer.currentTime);
-                totalTime.textContent = formatTime(audioPlayer.duration);
-            } else {
-                currentTime.textContent = '0:00';
-                totalTime.textContent = '0:00';
-            }
-        }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        function chooseFolder() {
-            Android.chooseFolder();
-        }
-
-        function refreshLibrary() {
-            loadSongs();
-            showMessage('Library refreshed');
-        }
-
-        function showMessage(message) {
-            console.log(message);
-        }
-
-        function showError(message) {
-            console.error(message);
-        }
-
-        // Make these functions available for Android to call
-        window.reloadLocalLibrary = function() {
-            loadSongs();
-            showMessage('New songs downloaded!');
-        };
-
-        window.playNextSong = playNextSong;
-        window.playPreviousSong = playPreviousSong;
-        window.pauseAudio = pauseAudio;
-        window.resumeAudio = resumeAudio;
-        window.stopAudio = stopAudio;
-    </script>
+    function updateNowPlayingMediaSession(songName) {
+        const artworkUrl = ''; // Replace with dynamic artwork if available
+        if ('mediaSession' in navigator) updateMediaSessionMetadata(songName, artworkUrl);
+    }
+</script>
 </body>
 </html>
