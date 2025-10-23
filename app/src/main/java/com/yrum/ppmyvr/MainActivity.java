@@ -6,15 +6,19 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.IBinder;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
@@ -34,6 +38,7 @@ import androidx.documentfile.provider.DocumentFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -54,21 +59,16 @@ public class MainActivity extends Activity {
     private static final int NOTIFICATION_ID = 1;
     private NotificationManager notificationManager;
 
-    // Action constants
-    private static final String ACTION_PLAY = "PLAY";
-    private static final String ACTION_PAUSE = "PAUSE";
-    private static final String ACTION_STOP = "STOP";
-    private static final String ACTION_NEXT = "NEXT";
-    private static final String ACTION_PREVIOUS = "PREVIOUS";
+    // Media Player
+    private MediaPlayer mediaPlayer;
+    private boolean isPrepared = false;
+    private boolean isPlaying = false;
+    private String currentSongName = "";
+    private String currentSongUri = "";
 
     private WebView mWebView;
     private FrameLayout rootLayout;
     private Button localBtn;
-
-    // Media playback state
-    private boolean isPlaying = false;
-    private String currentSongName = "";
-    private String currentSongUri = "";
 
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://dtech.preasx24.co.za";
@@ -81,6 +81,9 @@ public class MainActivity extends Activity {
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Initialize MediaPlayer
+        initializeMediaPlayer();
 
         // Initialize notification
         createNotificationChannel();
@@ -96,7 +99,7 @@ public class MainActivity extends Activity {
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
         webSettings.setDatabaseEnabled(true);
-        webSettings.setMediaPlaybackRequiresUserGesture(false); // Allow auto-play
+        webSettings.setMediaPlaybackRequiresUserGesture(false);
 
         mWebView.setWebViewClient(new WebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
@@ -119,11 +122,40 @@ public class MainActivity extends Activity {
         // Check and create default folder if needed
         checkAndCreateDefaultFolder();
 
-        // If no folder selected yet, prompt (deferred to blocking UI)
+        // If no folder selected yet, prompt
         String treeUri = getSavedTreeUri();
         if (treeUri == null || treeUri.isEmpty()) {
             promptUserToChooseFolder();
         }
+    }
+
+    private void initializeMediaPlayer() {
+        mediaPlayer = new MediaPlayer();
+        mediaPlayer.setOnCompletionListener(mp -> {
+            isPlaying = false;
+            runOnUiThread(() -> {
+                // Auto-play next song when current finishes
+                mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+            });
+        });
+
+        mediaPlayer.setOnPreparedListener(mp -> {
+            isPrepared = true;
+            mediaPlayer.start();
+            isPlaying = true;
+            updateNotification();
+            runOnUiThread(() -> {
+                Toast.makeText(MainActivity.this, "Now playing: " + currentSongName, Toast.LENGTH_SHORT).show();
+            });
+        });
+
+        mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+            Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
+            runOnUiThread(() -> {
+                Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show();
+            });
+            return false;
+        });
     }
 
     @Override
@@ -136,24 +168,20 @@ public class MainActivity extends Activity {
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
             switch (action) {
-                case ACTION_PLAY:
-                    resumeSong();
+                case "PLAY":
+                    playCurrentSong();
                     break;
-                case ACTION_PAUSE:
+                case "PAUSE":
                     pauseSong();
                     break;
-                case ACTION_STOP:
+                case "STOP":
                     stopSong();
                     break;
-                case ACTION_NEXT:
-                    // Call JavaScript to play next song
+                case "NEXT":
                     mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
-                    Toast.makeText(this, "Next song", Toast.LENGTH_SHORT).show();
                     break;
-                case ACTION_PREVIOUS:
-                    // Call JavaScript to play previous song
+                case "PREVIOUS":
                     mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
-                    Toast.makeText(this, "Previous song", Toast.LENGTH_SHORT).show();
                     break;
             }
         }
@@ -255,94 +283,57 @@ public class MainActivity extends Activity {
         return prefs.getString(PREFS_KEY_TREE_URI, null);
     }
 
-    // Media playback methods
+    // Media playback methods using Android MediaPlayer
     private void playSong(String songUri, String songName) {
         try {
+            // Stop current playback if any
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.stop();
+            }
+            mediaPlayer.reset();
+            
             currentSongName = songName;
             currentSongUri = songUri;
-            isPlaying = true;
+            isPrepared = false;
+
+            // Set data source and prepare async
+            mediaPlayer.setDataSource(this, Uri.parse(songUri));
+            mediaPlayer.prepareAsync();
             
-            // Get the song as data URL and play it via JavaScript
-            new Thread(() -> {
-                try {
-                    String dataUrl = getSongDataUrl(songUri);
-                    if (!dataUrl.isEmpty()) {
-                        final String jsCode = String.format(
-                            "if(window.playAudioFromDataUrl) playAudioFromDataUrl('%s', '%s');",
-                            dataUrl.replace("'", "\\'"),
-                            songName.replace("'", "\\'")
-                        );
-                        runOnUiThread(() -> {
-                            mWebView.evaluateJavascript(jsCode, null);
-                            updateNotification();
-                            Toast.makeText(MainActivity.this, "Now playing: " + songName, Toast.LENGTH_SHORT).show();
-                        });
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error preparing song: " + e.getMessage());
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
-                }
-            }).start();
+            updateNotification();
             
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
-            Toast.makeText(this, "Error playing song", Toast.LENGTH_SHORT).show();
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
+        }
+    }
+
+    private void playCurrentSong() {
+        if (isPrepared && !isPlaying) {
+            mediaPlayer.start();
+            isPlaying = true;
+            updateNotification();
         }
     }
 
     private void pauseSong() {
-        isPlaying = false;
-        // Call JavaScript to pause audio
-        mWebView.evaluateJavascript("if(window.pauseAudio) pauseAudio();", null);
-        updateNotification();
-        Toast.makeText(this, "Playback paused", Toast.LENGTH_SHORT).show();
-    }
-
-    private void resumeSong() {
-        isPlaying = true;
-        // Call JavaScript to resume audio
-        mWebView.evaluateJavascript("if(window.resumeAudio) resumeAudio();", null);
-        updateNotification();
-        Toast.makeText(this, "Playback resumed", Toast.LENGTH_SHORT).show();
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.pause();
+            isPlaying = false;
+            updateNotification();
+        }
     }
 
     private void stopSong() {
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+        }
+        mediaPlayer.reset();
         isPlaying = false;
+        isPrepared = false;
         currentSongName = "";
         currentSongUri = "";
-        // Call JavaScript to stop audio
-        mWebView.evaluateJavascript("if(window.stopAudio) stopAudio();", null);
         updateNotification();
-        Toast.makeText(this, "Playback stopped", Toast.LENGTH_SHORT).show();
-    }
-
-    // Helper method to get song as data URL
-    private String getSongDataUrl(String docUriString) {
-        InputStream in = null;
-        ByteArrayOutputStream baos = null;
-        try {
-            Uri uri = Uri.parse(docUriString);
-            ContentResolver resolver = getContentResolver();
-            in = resolver.openInputStream(uri);
-            if (in == null) return "";
-
-            baos = new ByteArrayOutputStream();
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                baos.write(buffer, 0, read);
-            }
-            byte[] bytes = baos.toByteArray();
-            String base64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
-            String dataUrl = "data:audio/mpeg;base64," + base64;
-            return dataUrl;
-        } catch (Exception e) {
-            Log.e(TAG, "getSongDataUrl error: " + e.getMessage());
-            return "";
-        } finally {
-            try { if (in != null) in.close(); } catch (Exception ignored) {}
-            try { if (baos != null) baos.close(); } catch (Exception ignored) {}
-        }
     }
 
     // Notification methods
@@ -367,28 +358,28 @@ public class MainActivity extends Activity {
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-        // Create media action intents that launch the activity directly
+        // Create media action intents
         Intent playIntent = new Intent(this, MainActivity.class);
-        playIntent.setAction(ACTION_PLAY);
+        playIntent.setAction("PLAY");
         PendingIntent playPendingIntent = PendingIntent.getActivity(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Intent pauseIntent = new Intent(this, MainActivity.class);
-        pauseIntent.setAction(ACTION_PAUSE);
+        pauseIntent.setAction("PAUSE");
         PendingIntent pausePendingIntent = PendingIntent.getActivity(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Intent stopIntent = new Intent(this, MainActivity.class);
-        stopIntent.setAction(ACTION_STOP);
+        stopIntent.setAction("STOP");
         PendingIntent stopPendingIntent = PendingIntent.getActivity(this, 3, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Intent nextIntent = new Intent(this, MainActivity.class);
-        nextIntent.setAction(ACTION_NEXT);
+        nextIntent.setAction("NEXT");
         PendingIntent nextPendingIntent = PendingIntent.getActivity(this, 4, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         Intent prevIntent = new Intent(this, MainActivity.class);
-        prevIntent.setAction(ACTION_PREVIOUS);
+        prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Build notification - use available icons
+        // Build professional music player notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
@@ -396,6 +387,8 @@ public class MainActivity extends Activity {
                 .setContentIntent(pendingIntent)
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
+                        .setShowActionsInCompactView(0, 1, 2))
                 .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
@@ -404,16 +397,30 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
         }
 
-        // Use a simple square icon for stop since ic_media_stop doesn't exist
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
+               .addAction(android.R.drawable.ic_media_stop, "Stop", stopPendingIntent);
 
-        Notification notification = builder.build();
-        notificationManager.notify(NOTIFICATION_ID, notification);
+        // Start foreground service behavior (without actual Service)
+        if (isPlaying) {
+            startForeground(NOTIFICATION_ID, builder.build());
+        } else {
+            notificationManager.notify(NOTIFICATION_ID, builder.build());
+        }
+    }
+
+    // Simulate foreground service behavior
+    private void startForeground(int id, Notification notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(new Intent(this, MainActivity.class));
+        }
+        notificationManager.notify(id, notification);
     }
 
     private void removeNotification() {
         notificationManager.cancel(NOTIFICATION_ID);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            stopForeground(true);
+        }
     }
 
     // JavaScript bridge
@@ -465,11 +472,6 @@ public class MainActivity extends Activity {
             }
         }
 
-        @JavascriptInterface
-        public String getSongDataUrl(String docUriString) {
-            return MainActivity.this.getSongDataUrl(docUriString);
-        }
-
         // Media control methods
         @JavascriptInterface
         public void playSong(String songUri, String songName) {
@@ -483,7 +485,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void resumeSong() {
-            runOnUiThread(() -> MainActivity.this.resumeSong());
+            runOnUiThread(() -> MainActivity.this.playCurrentSong());
         }
 
         @JavascriptInterface
@@ -499,6 +501,23 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getCurrentSong() {
             return currentSongName;
+        }
+
+        @JavascriptInterface
+        public int getCurrentPosition() {
+            return mediaPlayer.getCurrentPosition();
+        }
+
+        @JavascriptInterface
+        public int getDuration() {
+            return mediaPlayer.getDuration();
+        }
+
+        @JavascriptInterface
+        public void seekTo(int position) {
+            if (isPrepared) {
+                mediaPlayer.seekTo(position);
+            }
         }
 
         @JavascriptInterface
@@ -590,15 +609,29 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mediaPlayer != null) {
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.stop();
+            }
+            mediaPlayer.release();
+        }
         removeNotification();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        // Keep music playing and notification alive when app goes to background
         if (isPlaying) {
             updateNotification();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Update notification when app comes to foreground
+        updateNotification();
     }
 
     @Override
@@ -606,7 +639,8 @@ public class MainActivity extends Activity {
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
-            super.onBackPressed();
+            // Don't stop music when going back - just minimize the app
+            moveTaskToBack(true);
         }
     }
 }
