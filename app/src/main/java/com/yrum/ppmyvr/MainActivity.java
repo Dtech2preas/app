@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
     private FrameLayout rootLayout;
 
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https://music.preasx24.co.za";
+    private final String mainUrl = "https://dtech.preasx24.co.za";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -95,16 +95,15 @@ public class MainActivity extends Activity {
         webSettings.setAllowContentAccess(true);
         webSettings.setDatabaseEnabled(true);
         webSettings.setMediaPlaybackRequiresUserGesture(false);
-        webSettings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36");
 
-        // Custom WebViewClient to intercept download requests
-        mWebView.setWebViewClient(new CustomWebViewClient());
+        mWebView.setWebViewClient(new WebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
 
         // Download listener - intercept file downloads and save to selected folder
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+                Log.d(TAG, "Download started: " + url);
                 String guessed = URLUtil.guessFileName(url, contentDisposition, mimeType);
                 new AndroidBridge(MainActivity.this).downloadSong(url, guessed);
             }
@@ -120,112 +119,6 @@ public class MainActivity extends Activity {
         String treeUri = getSavedTreeUri();
         if (treeUri == null || treeUri.isEmpty()) {
             promptUserToChooseFolder();
-        }
-    }
-
-    // Custom WebViewClient to intercept download API calls
-    private class CustomWebViewClient extends WebViewClient {
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            // Handle download URLs directly
-            if (url.contains("/download/") && !url.contains("/download/status/")) {
-                handleDownloadUrl(url);
-                return true; // Intercept the URL
-            }
-            return false; // Let WebView handle the URL
-        }
-
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            
-            // Inject JavaScript to intercept fetch requests for downloads
-            injectDownloadInterceptor();
-        }
-    }
-
-    // Inject JavaScript to intercept download API calls
-    private void injectDownloadInterceptor() {
-        String jsCode = """
-            (function() {
-                // Store original fetch
-                const originalFetch = window.fetch;
-                
-                // Override fetch to intercept download requests
-                window.fetch = function(...args) {
-                    const url = args[0];
-                    
-                    // Intercept download requests
-                    if (typeof url === 'string' && url.includes('/download/') && !url.includes('/download/status/')) {
-                        console.log('Intercepted download request:', url);
-                        
-                        // Extract server index from URL
-                        const match = url.match(/\\/download\\/(\\d+)/);
-                        if (match && match[1]) {
-                            const serverIndex = match[1];
-                            
-                            // Get song info from current page context if available
-                            let songName = 'song_' + serverIndex;
-                            let artist = 'Unknown Artist';
-                            
-                            // Try to find song info in search results
-                            if (window.searchResults && Array.isArray(window.searchResults)) {
-                                const song = window.searchResults.find(s => 
-                                    s.index == serverIndex || s.serverIndex == serverIndex);
-                                if (song) {
-                                    songName = song.song_name || song.name || songName;
-                                    artist = song.artist || artist;
-                                }
-                            }
-                            
-                            const fileName = artist + ' - ' + songName + '.mp3';
-                            
-                            // Call Android interface to handle download
-                            if (window.Android && typeof Android.downloadSongByIndex === 'function') {
-                                Android.downloadSongByIndex(serverIndex, fileName);
-                            }
-                            
-                            // Return a mock response to prevent the original request
-                            return Promise.resolve({
-                                ok: true,
-                                status: 200,
-                                json: () => Promise.resolve({ download_id: 'android_handled' }),
-                                blob: () => Promise.resolve(new Blob())
-                            });
-                        }
-                    }
-                    
-                    // For all other requests, use original fetch
-                    return originalFetch.apply(this, args);
-                };
-                
-                console.log('Download interceptor injected');
-            })();
-            """;
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            mWebView.evaluateJavascript(jsCode, null);
-        }
-    }
-
-    // Handle download URLs directly
-    private void handleDownloadUrl(String url) {
-        try {
-            // Extract server index from URL pattern: /download/{serverIndex}
-            String[] parts = url.split("/download/");
-            if (parts.length > 1) {
-                String serverIndexStr = parts[1].split("/")[0].split("\\?")[0];
-                int serverIndex = Integer.parseInt(serverIndexStr);
-                
-                // Generate filename
-                String fileName = "song_" + serverIndex + ".mp3";
-                
-                // Trigger download via AndroidBridge
-                new AndroidBridge(this).downloadSongByIndex(serverIndex, fileName);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error handling download URL: " + e.getMessage());
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error starting download", Toast.LENGTH_SHORT).show());
         }
     }
 
@@ -252,7 +145,7 @@ public class MainActivity extends Activity {
         mediaPlayer.setOnErrorListener((mp, what, extra) -> {
             Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
             runOnUiThread(() -> {
-                Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
             });
             return false;
         });
@@ -299,11 +192,6 @@ public class MainActivity extends Activity {
             }
             prefs.edit().putBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, true).apply();
         }
-    }
-
-    private static int dpToPx(Context ctx, int dp) {
-        float density = ctx.getResources().getDisplayMetrics().density;
-        return Math.round((float) dp * density);
     }
 
     private void promptUserToChooseFolder() {
@@ -544,33 +432,6 @@ public class MainActivity extends Activity {
             }
         }
 
-        // New method to handle download by server index
-        @JavascriptInterface
-        public void downloadSongByIndex(final int serverIndex, final String fileName) {
-            AsyncTask.execute(() -> {
-                try {
-                    String tree = getSavedTreeUri();
-                    if (tree == null || tree.isEmpty()) {
-                        runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Please select a folder first", Toast.LENGTH_LONG).show();
-                            mWebView.evaluateJavascript("if(window.showFolderSelectionRequired) showFolderSelectionRequired();", null);
-                        });
-                        return;
-                    }
-
-                    // Construct the download URL based on the new protocol
-                    String downloadUrl = mainUrl + "/download/" + serverIndex;
-                    
-                    // Use the existing download method with the constructed URL
-                    downloadSong(downloadUrl, fileName);
-                    
-                } catch (Exception e) {
-                    Log.e(TAG, "downloadSongByIndex error: " + e.getMessage());
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed", Toast.LENGTH_SHORT).show());
-                }
-            });
-        }
-
         // Media control methods
         @JavascriptInterface
         public void playSong(String songUri, String songName) {
@@ -678,7 +539,6 @@ public class MainActivity extends Activity {
                         conn.setRequestMethod("GET");
                         conn.setConnectTimeout(15000);
                         conn.setReadTimeout(30000);
-                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36");
                         conn.connect();
 
                         final int responseCode = conn.getResponseCode();
