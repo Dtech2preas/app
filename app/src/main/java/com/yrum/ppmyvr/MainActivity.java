@@ -568,6 +568,9 @@ public class MainActivity extends Activity {
                         long totalRead = 0;
                         long contentLength = conn.getContentLength();
                         
+                        // Create final copy for use in lambda
+                        final String finalSafeName = safeName;
+                        
                         while ((len = in.read(buffer)) != -1) {
                             out.write(buffer, 0, len);
                             totalRead += len;
@@ -576,13 +579,12 @@ public class MainActivity extends Activity {
                             if (contentLength > 0) {
                                 final int progress = (int) ((totalRead * 100) / contentLength);
                                 runOnUiThread(() -> {
-                                    mWebView.evaluateJavascript("if(window.onDownloadProgress) onDownloadProgress('" + safeName + "', " + progress + ");", null);
+                                    mWebView.evaluateJavascript("if(window.onDownloadProgress) onDownloadProgress('" + finalSafeName + "', " + progress + ");", null);
                                 });
                             }
                         }
                         out.flush();
 
-                        final String finalSafeName = safeName;
                         runOnUiThread(() -> {
                             Toast.makeText(MainActivity.this, "Saved: " + finalSafeName, Toast.LENGTH_LONG).show();
                             try {
