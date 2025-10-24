@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
     private AndroidBridge bridge;
     
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https://music.preasx24.co.za";
+    private final String mainUrl = "https://dtech.preasx24.co.za";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -97,68 +97,47 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Set up WebViewClient without modifying site JS or requests
-        mWebView.setWebViewClient(new CustomWebViewClient());
+        // Set up WebViewClient - let website work normally
+        mWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                // Let the website handle all URLs normally
+                return false;
+            }
+            
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                // Let the website handle all URLs normally
+                return false;
+            }
+        });
 
-        // Download listener - intercept file downloads and save to selected folder
+        // Download listener - ONLY intercept actual download requests
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                Log.d(TAG, "Download started (listener): " + url);
+                Log.d(TAG, "Download started: " + url);
                 
                 // Only handle HTTP/HTTPS URLs
                 if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    String guessed = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                    bridge.downloadSong(url, guessed);
+                    String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+                    Log.d(TAG, "Downloading file: " + fileName);
+                    bridge.downloadSong(url, fileName);
                 } else {
                     Log.d(TAG, "Skipping non-HTTP download: " + url);
                 }
             }
         });
 
-        // Load the main website (D-TECH MUSIC player) WITHOUT altering it
+        // Load the main website WITHOUT altering it
         mWebView.loadUrl(mainUrl);
 
         // Check and create default folder if needed
         checkAndCreateDefaultFolder();
 
         // If no folder selected yet, prompt
-        String treeUri = getSavedTreeUri();
-        if (treeUri == null || treeUri.isEmpty()) {
+        if (getSavedTreeUri() == null) {
             promptUserToChooseFolder();
-        }
-    }
-
-    // Custom WebViewClient that will NOT inject or change site behavior.
-    // It only heuristically detects navigations to likely downloadable files and
-    // delegates to our bridge download logic so we can save to the chosen folder.
-    private class CustomWebViewClient extends WebViewClient {
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            try {
-                Uri uri = request.getUrl();
-                String url = uri.toString();
-                Log.d(TAG, "Navigating to: " + url);
-
-                // Heuristic: if URL ends with common audio extensions or contains ?download=1, intercept
-                String lower = url.toLowerCase();
-                if (lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".wav") || 
-                    lower.endsWith(".ogg") || lower.contains("?download=") || lower.contains("&download=")) {
-                    String guessed = URLUtil.guessFileName(url, null, null);
-                    bridge.downloadSong(url, guessed);
-                    // Prevent WebView from navigating to binary file URL
-                    return true;
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "shouldOverrideUrlLoading error: " + e.getMessage());
-            }
-            return super.shouldOverrideUrlLoading(view, request);
-        }
-
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            // intentionally do NOT inject JS or alter the page
         }
     }
 
@@ -250,28 +229,23 @@ public class MainActivity extends Activity {
                 if (data != null) {
                     Uri treeUri = data.getData();
                     if (treeUri != null) {
-                        int takeFlags = data.getFlags();
-                        int desiredFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-                        takeFlags = takeFlags & desiredFlags;
-                        if (takeFlags == 0) {
-                            takeFlags = desiredFlags;
-                        }
-                        
+                        // Take persistent permission
                         try {
-                            getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
+                            getContentResolver().takePersistableUriPermission(
+                                treeUri, 
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            );
                         } catch (SecurityException se) {
                             Log.w(TAG, "takePersistableUriPermission failed: " + se.getMessage());
                         }
                         
                         saveTreeUri(treeUri.toString());
-                        Toast.makeText(this, "Folder saved for downloads.", Toast.LENGTH_SHORT).show();
-                        
-                        // Notify the web page that folder has been selected (optional)
-                        mWebView.evaluateJavascript("if(window.onFolderSelected) onFolderSelected();", null);
+                        Toast.makeText(this, "Download folder set successfully!", Toast.LENGTH_SHORT).show();
+                        Log.d(TAG, "Folder URI saved: " + treeUri.toString());
                     }
                 }
             } else {
-                Toast.makeText(this, "You must choose a folder to store songs.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Please select a folder to save downloads", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -524,131 +498,151 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Public download method that can be called from JS or Java (we call it from Java here)
+        // Public download method
         @android.webkit.JavascriptInterface
         public void downloadSong(final String urlString, final String suggestedFileName) {
             AsyncTask.execute(() -> performDownload(urlString, suggestedFileName));
         }
 
-        // internal shared download logic
+        // Fixed download logic - ensures files are saved to selected folder
         private void performDownload(final String urlString, final String suggestedFileName) {
             try {
-                String tree = getSavedTreeUri();
-                if (tree == null || tree.isEmpty()) {
+                String treeUriString = getSavedTreeUri();
+                if (treeUriString == null || treeUriString.isEmpty()) {
                     runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "Please select a folder first", Toast.LENGTH_LONG).show();
-                        mWebView.evaluateJavascript("if(window.showFolderSelectionRequired) showFolderSelectionRequired();", null);
+                        Toast.makeText(MainActivity.this, "Please select a download folder first", Toast.LENGTH_LONG).show();
+                        promptUserToChooseFolder();
                     });
                     return;
                 }
 
-                Uri treeUri = Uri.parse(tree);
+                Uri treeUri = Uri.parse(treeUriString);
                 DocumentFile pickedDir = DocumentFile.fromTreeUri(MainActivity.this, treeUri);
-                if (pickedDir == null) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Chosen folder not available", Toast.LENGTH_LONG).show());
+                if (pickedDir == null || !pickedDir.exists()) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Selected folder is not accessible", Toast.LENGTH_LONG).show());
                     return;
                 }
 
-                String safeName = suggestedFileName;
-                if (safeName == null || safeName.trim().isEmpty()) {
-                    safeName = URLUtil.guessFileName(urlString, null, null);
+                // Clean filename
+                String safeName = cleanFileName(suggestedFileName);
+                Log.d(TAG, "Attempting to save file: " + safeName + " to folder: " + treeUri);
+
+                // Delete existing file with same name
+                DocumentFile existingFile = pickedDir.findFile(safeName);
+                if (existingFile != null) {
+                    existingFile.delete();
+                    Log.d(TAG, "Deleted existing file: " + safeName);
                 }
 
-                // Clean filename - remove any invalid characters
-                safeName = safeName.replaceAll("[^a-zA-Z0-9.\\-\\s]", "_");
-                safeName = safeName.replaceAll("_{2,}", "_");
+                // Create new file with proper MIME type
+                String mimeType = "audio/mpeg";
+                if (safeName.toLowerCase().endsWith(".m4a")) mimeType = "audio/mp4";
+                else if (safeName.toLowerCase().endsWith(".wav")) mimeType = "audio/wav";
+                else if (safeName.toLowerCase().endsWith(".ogg")) mimeType = "audio/ogg";
 
-                // Ensure extension
-                if (!safeName.contains(".")) {
-                    safeName += ".mp3";
-                }
-
-                DocumentFile existing = pickedDir.findFile(safeName);
-                if (existing != null) existing.delete();
-
-                DocumentFile newFile = pickedDir.createFile("audio/mpeg", safeName);
+                DocumentFile newFile = pickedDir.createFile(mimeType, safeName);
+                
                 if (newFile == null) {
                     runOnUiThread(() -> Toast.makeText(MainActivity.this, "Failed to create file in folder", Toast.LENGTH_LONG).show());
                     return;
                 }
 
-                HttpURLConnection conn = null;
-                InputStream in = null;
-                OutputStream out = null;
+                Log.d(TAG, "File created successfully: " + newFile.getUri());
+
+                // Download the file
+                HttpURLConnection connection = null;
+                InputStream inputStream = null;
+                OutputStream outputStream = null;
                 
                 try {
                     URL url = new URL(urlString);
-                    conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(15000);
-                    conn.setReadTimeout(30000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36");
-                    conn.connect();
+                    connection = (HttpURLConnection) url.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(30000);
+                    connection.setReadTimeout(30000);
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
+                    
+                    connection.connect();
 
-                    final int responseCode = conn.getResponseCode();
+                    int responseCode = connection.getResponseCode();
                     if (responseCode != HttpURLConnection.HTTP_OK) {
-                        runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show();
-                            mWebView.evaluateJavascript("if(window.onDownloadFailed) onDownloadFailed('HTTP " + responseCode + "');", null);
-                        });
+                        Log.e(TAG, "Server returned HTTP " + responseCode + " for " + urlString);
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show());
                         return;
                     }
 
-                    in = conn.getInputStream();
-                    out = getContentResolver().openOutputStream(newFile.getUri());
+                    inputStream = connection.getInputStream();
+                    outputStream = getContentResolver().openOutputStream(newFile.getUri());
                     
-                    if (out == null) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Can't open output stream to chosen folder", Toast.LENGTH_LONG).show());
+                    if (outputStream == null) {
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Cannot write to selected folder", Toast.LENGTH_LONG).show());
                         return;
                     }
 
                     byte[] buffer = new byte[8192];
-                    int len;
-                    long totalRead = 0;
-                    long contentLength = conn.getContentLength();
-                    final String finalSafeName = safeName;
+                    int bytesRead;
+                    long totalBytes = 0;
+                    long contentLength = connection.getContentLength();
 
-                    while ((len = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, len);
-                        totalRead += len;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                        totalBytes += bytesRead;
                         
-                        if (contentLength > 0) {
-                            final int progress = (int) ((totalRead * 100) / contentLength);
-                            runOnUiThread(() -> {
-                                mWebView.evaluateJavascript("if(window.onDownloadProgress) onDownloadProgress('" + finalSafeName + "', " + progress + ");", null);
-                            });
+                        // Log progress for large files
+                        if (contentLength > 0 && totalBytes % (1024 * 1024) == 0) {
+                            int progress = (int) ((totalBytes * 100) / contentLength);
+                            Log.d(TAG, "Download progress: " + progress + "%");
                         }
                     }
-                    out.flush();
+
+                    outputStream.flush();
+                    Log.d(TAG, "Download completed successfully: " + safeName + " (" + totalBytes + " bytes)");
 
                     runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "Saved: " + finalSafeName, Toast.LENGTH_LONG).show();
-                        try {
-                            mWebView.evaluateJavascript("if(window.onDownloadComplete) onDownloadComplete('" + finalSafeName + "');", null);
-                            mWebView.evaluateJavascript("if(window.reloadLibrary) reloadLibrary();", null);
-                            mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
-                        } catch (Exception ignored) {}
+                        Toast.makeText(MainActivity.this, "Download saved: " + safeName, Toast.LENGTH_LONG).show();
                     });
 
                 } finally {
+                    // Clean up resources
                     try {
-                        if (in != null) in.close();
-                    } catch (Exception ignored) {}
-                    
+                        if (inputStream != null) inputStream.close();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error closing input stream: " + e.getMessage());
+                    }
                     try {
-                        if (out != null) out.close();
-                    } catch (Exception ignored) {}
-                    
-                    if (conn != null) conn.disconnect();
+                        if (outputStream != null) outputStream.close();
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error closing output stream: " + e.getMessage());
+                    }
+                    if (connection != null) connection.disconnect();
                 }
                 
             } catch (final Exception e) {
-                Log.e(TAG, "downloadSong error: " + e.getMessage());
+                Log.e(TAG, "Download failed: " + e.getMessage(), e);
                 runOnUiThread(() -> {
                     Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    mWebView.evaluateJavascript("if(window.onDownloadFailed) onDownloadFailed('" + e.getMessage() + "');", null);
                 });
             }
+        }
+
+        private String cleanFileName(String fileName) {
+            if (fileName == null || fileName.trim().isEmpty()) {
+                return "download_" + System.currentTimeMillis() + ".mp3";
+            }
+            
+            // Remove invalid characters for filenames
+            String cleanName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+            
+            // Replace multiple underscores with single one
+            cleanName = cleanName.replaceAll("_{2,}", "_");
+            
+            // Trim and ensure not empty
+            cleanName = cleanName.trim();
+            if (cleanName.isEmpty()) {
+                cleanName = "download_" + System.currentTimeMillis() + ".mp3";
+            }
+            
+            return cleanName;
         }
     }
 
