@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D-TECH MUSIC</title>
+</head>
+<body>
+    <div class="app-container">
+        <nav class="sidebar">
+            <div class="logo">
+                <span>D-TECH MUSIC</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#" class="active">Home</a></li>
+                <li><a href="#">Search</a></li>
+                <li><a href="#">Your Library</a></li>
+                <li><a href="#">Create Playlist</a></li>
+                <li><a href="#">Liked Songs</a></li>
+            </ul>
+        </nav>
+
+        <header class="header">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search for songs, artists, or albums..." />
+                <button onclick="searchSongs()">Search</button>
+            </div>
+            <div class="user-menu">
+                <button class="upgrade-btn">Upgrade</button>
+                <div class="user-avatar">User</div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <h1 class="section-title">Good evening</h1>
+            <div class="featured-grid" id="featuredSongs"></div>
+
+            <h2 class="section-title">Your Music Library</h2>
+            <div class="song-list">
+                <div class="song-header">
+                    <div>#</div>
+                    <div>TITLE</div>
+                    <div>ALBUM</div>
+                    <div>STATUS</div>
+                    <div>ACTION</div>
+                </div>
+                <div id="songList"></div>
+            </div>
+
+            <div class="queue-section">
+                <h3>Download Queue</h3>
+                <div id="downloadQueue">No active downloads</div>
+            </div>
+        </main>
+
+        <footer class="player">
+            <div class="now-playing">
+                <div class="now-playing-info">
+                    <h4>No song selected</h4>
+                    <p>D-TECH MUSIC</p>
+                </div>
+                <button>❤</button>
+            </div>
+
+            <div class="player-controls">
+                <div class="control-buttons">
+                    <button>Shuffle</button>
+                    <button>Prev</button>
+                    <button class="play-button">Play</button>
+                    <button>Next</button>
+                    <button>Repeat</button>
+                </div>
+                <div class="progress-container">
+                    <span class="progress-time">0:00</span>
+                    <div class="progress-bar-full">
+                        <div class="progress-hover" style="width: 0%;"></div>
+                    </div>
+                    <span class="progress-time">0:00</span>
+                </div>
+            </div>
+
+            <div class="extra-controls">
+                <button>List</button>
+                <button>Volume</button>
+            </div>
+        </footer>
+    </div>
+
+    <div class="modal" id="searchModal">
+        <div class="modal-content">
+            <h2>Search Results</h2>
+            <div id="searchResults"></div>
+            <button onclick="closeSearchModal()">Close</button>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        let currentSongs = [];
+        let activeDownloads = new Map();
+        let downloadInterval;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSongs();
+            loadFeaturedSongs();
+            startDownloadMonitor();
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') searchSongs();
+            });
+        });
+
+        async function loadSongs() {
+            try {
+                const response = await fetch('/songs');
+                currentSongs = await response.json();
+                displaySongs(currentSongs);
+            } catch (error) {
+                console.error('Error loading songs:', error);
+                showNotification('Failed to load songs', 'error');
+            }
+        }
+
+        async function loadFeaturedSongs() {
+            try {
+                const response = await fetch('/featured');
+                const featuredSongs = await response.json();
+                displayFeaturedSongs(featuredSongs);
+            } catch (error) {
+                console.error('Error loading featured songs:', error);
+            }
+        }
+
+        function displayFeaturedSongs(songs) {
+            const featuredContainer = document.getElementById('featuredSongs');
+            featuredContainer.innerHTML = songs.map(song => `
+                <div class="featured-card" onclick="downloadSong(${song.index})">
+                    <div>${escapeHtml(song.song_name)} - ${escapeHtml(song.artist)}</div>
+                </div>
+            `).join('');
+        }
+
+        function displaySongs(songs) {
+            const songList = document.getElementById('songList');
+            if (songs.length === 0) {
+                songList.innerHTML = '<div>No songs in your library. Search and add some songs!</div>';
+                return;
+            }
+
+            songList.innerHTML = songs.map(song => `
+                <div class="song-item">
+                    <div>${song.index}</div>
+                    <div>${escapeHtml(song.song_name)} - ${escapeHtml(song.artist)}</div>
+                    <div>${escapeHtml(song.album || 'Unknown Album')}</div>
+                    <div>${song.downloaded ? 'DOWNLOADED' : 'NOT DOWNLOADED'}</div>
+                    <div><button onclick="downloadSong(${song.index})" ${song.downloaded ? 'disabled' : ''}>
+                        ${song.downloaded ? 'DOWNLOADED' : 'DOWNLOAD'}
+                    </button></div>
+                </div>
+            `).join('');
+        }
+
+        async function searchSongs() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                showNotification('Please enter a search query', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ query })
+                });
+                const data = await response.json();
+                if (data.error) return showNotification(data.error, 'error');
+                if (!data.results?.length) return showNotification('No results found', 'error');
+                displaySearchResults(data.results);
+                openSearchModal();
+            } catch (error) {
+                console.error('Search error:', error);
+                showNotification('Search failed.', 'error');
+            }
+        }
+
+        function displaySearchResults(results) {
+            const resultsContainer = document.getElementById('searchResults');
+            resultsContainer.innerHTML = results.map((result, index) => `
+                <div class="song-item">
+                    <div>${index + 1}</div>
+                    <div>${escapeHtml(result.song_name)} - ${escapeHtml(result.artist)}</div>
+                    <div>${escapeHtml(result.album || 'Unknown Album')}</div>
+                    <div>SPOTIFY</div>
+                    <div><button onclick="addSong('${escapeHtml(result.song_name)}', '${escapeHtml(result.artist)}', '${escapeHtml(result.album || '')}')">
+                        ADD TO LIBRARY
+                    </button></div>
+                </div>
+            `).join('');
+        }
+
+        function openSearchModal() {
+            document.getElementById('searchModal').style.display = 'block';
+        }
+
+        function closeSearchModal() {
+            document.getElementById('searchModal').style.display = 'none';
+            document.getElementById('searchInput').value = '';
+        }
+
+        async function addSong(songName, artist, album = '') {
+            try {
+                const response = await fetch('/add_song', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ song_name: songName, artist, album })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    showNotification(data.error, 'error');
+                } else {
+                    showNotification('Song added to library!', 'success');
+                    closeSearchModal();
+                    loadSongs();
+                    loadFeaturedSongs();
+                }
+            } catch (error) {
+                console.error('Add song error:', error);
+                showNotification('Failed to add song', 'error');
+            }
+        }
+
+        async function downloadSong(songIndex) {
+            try {
+                const response = await fetch(`/download/${songIndex}`);
+                const data = await response.json();
+                if (data.download_id) {
+                    activeDownloads.set(data.download_id, { songIndex, status: 'queued', progress: 0 });
+                    showNotification('Download queued!', 'success');
+                    updateDownloadQueue();
+                } else if (data.error) {
+                    showNotification(data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Download error:', error);
+                showNotification('Download failed', 'error');
+            }
+        }
+
+        function startDownloadMonitor() {
+            downloadInterval = setInterval(updateDownloadQueue, 2000);
+        }
+
+        async function updateDownloadQueue() {
+            try {
+                for (let [downloadId, downloadInfo] of activeDownloads) {
+                    const response = await fetch(`/download/status/${downloadId}`);
+                    const status = await response.json();
+                    downloadInfo.status = status.status;
+                    downloadInfo.progress = status.progress || 0;
+                    if (status.status === 'completed' && !downloadInfo.completed) {
+                        downloadInfo.completed = true;
+                        showNotification('Download completed!', 'success');
+                        window.open(`/download/file/${downloadInfo.songIndex}`, '_blank');
+                        setTimeout(() => {
+                            loadSongs();
+                            loadFeaturedSongs();
+                        }, 1000);
+                    } else if (status.status === 'failed') {
+                        showNotification(`Download failed: ${status.message}`, 'error');
+                    }
+                }
+                for (let [downloadId, downloadInfo] of activeDownloads) {
+                    if (downloadInfo.status === 'completed' || downloadInfo.status === 'failed') {
+                        setTimeout(() => {
+                            activeDownloads.delete(downloadId);
+                            updateQueueDisplay();
+                        }, 5000);
+                    }
+                }
+                updateQueueDisplay();
+            } catch (error) {
+                console.error('Error updating download queue:', error);
+            }
+        }
+
+        function updateQueueDisplay() {
+            const queueContainer = document.getElementById('downloadQueue');
+            if (activeDownloads.size === 0) {
+                queueContainer.innerHTML = 'No active downloads';
+                return;
+            }
+            queueContainer.innerHTML = Array.from(activeDownloads.entries()).map(([id, info]) => {
+                const song = currentSongs.find(s => s.index === info.songIndex);
+                if (!song) return '';
+                return `
+                    <div>
+                        <div>${escapeHtml(song.song_name)} - ${escapeHtml(song.artist)}</div>
+                        <div>${info.status} - ${info.progress}%</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            setTimeout(() => { notification.textContent = ''; }, 3000);
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;")
+                         .replace(/</g, "&lt;")
+                         .replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;")
+                         .replace(/'/g, "&#039;");
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('searchModal');
+            if (event.target === modal) closeSearchModal();
+        }
+    </script>
+</body>
+</html>
