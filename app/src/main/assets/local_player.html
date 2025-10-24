@@ -4,316 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Music Player</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            color: white;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .player-card {
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        .now-playing {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .song-info h2 {
-            font-size: 1.5em;
-            margin-bottom: 10px;
-            color: #333;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .song-info p {
-            color: #666;
-            font-size: 1.1em;
-        }
-
-        .controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 20px;
-            margin: 25px 0;
-        }
-
-        .control-btn {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border: none;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            color: white;
-            font-size: 1.5em;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-
-        .control-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-        }
-
-        .control-btn:active {
-            transform: scale(0.95);
-        }
-
-        .play-btn {
-            width: 70px;
-            height: 70px;
-            font-size: 1.8em;
-        }
-
-        .library-section {
-            margin-top: 30px;
-        }
-
-        .section-title {
-            color: white;
-            margin-bottom: 15px;
-            font-size: 1.4em;
-        }
-
-        .songs-list {
-            background: white;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .song-item {
-            padding: 15px 20px;
-            border-bottom: 1px solid #eee;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .song-item:hover {
-            background: #f8f9fa;
-            transform: translateX(5px);
-        }
-
-        .song-item:last-child {
-            border-bottom: none;
-        }
-
-        .song-name {
-            font-weight: 500;
-            color: #333;
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .play-indicator {
-            color: #667eea;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-
-        .folder-section {
-            margin-top: 20px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .folder-btn {
-            background: rgba(255,255,255,0.2);
-            border: 2px solid white;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 1em;
-            transition: all 0.3s ease;
-        }
-
-        .folder-btn:hover {
-            background: white;
-            color: #667eea;
-        }
-
-        .status {
-            margin-top: 15px;
-            padding: 10px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: 500;
-        }
-
-        .status.playing {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status.paused {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .status.stopped {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .progress-container {
-            margin: 20px 0;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #e9ecef;
-            border-radius: 3px;
-            overflow: hidden;
-            cursor: pointer;
-        }
-
-        .progress {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            width: 0%;
-            transition: width 0.1s ease;
-        }
-
-        .time-display {
-            display: flex;
-            justify-content: space-between;
-            color: #666;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-
-        .empty-state i {
-            font-size: 3em;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-
-        .volume-control {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 15px 0;
-            color: white;
-        }
-
-        .volume-slider {
-            flex: 1;
-            height: 5px;
-            background: rgba(255,255,255,0.3);
-            border-radius: 5px;
-            outline: none;
-        }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎵 Music Player</h1>
-            <p>Your personal music collection - Plays in background</p>
-        </div>
+    <div id="container">
+        <h1>Music Player</h1>
+        <p>Your personal music collection - Plays in background</p>
 
-        <div class="player-card">
-            <div class="now-playing">
-                <div class="song-info">
-                    <h2 id="currentSongTitle">No song selected</h2>
-                    <p id="currentSongStatus">Tap on a song to play</p>
-                </div>
-                
-                <div class="progress-container">
-                    <div class="progress-bar" id="progressBarContainer">
-                        <div class="progress" id="progressBar"></div>
-                    </div>
-                    <div class="time-display">
-                        <span id="currentTime">0:00</span>
-                        <span id="totalTime">0:00</span>
-                    </div>
-                </div>
+        <div id="player">
+            <h2 id="currentSongTitle">No song selected</h2>
+            <p id="currentSongStatus">Tap on a song to play</p>
 
-                <div class="controls">
-                    <button class="control-btn" onclick="playPreviousSong()">⏮</button>
-                    <button class="control-btn play-btn" onclick="togglePlayPause()" id="playPauseBtn">▶</button>
-                    <button class="control-btn" onclick="playNextSong()">⏭</button>
-                    <button class="control-btn" onclick="stopPlayback()">⏹</button>
-                </div>
-
-                <div class="status stopped" id="playerStatus">
-                    Player stopped - Music continues in background
-                </div>
+            <div id="progressBarContainer">
+                <div id="progressBar"></div>
             </div>
+            <div>
+                <span id="currentTime">0:00</span>
+                <span id="totalTime">0:00</span>
+            </div>
+
+            <div id="controls">
+                <button onclick="playPreviousSong()">⏮</button>
+                <button onclick="togglePlayPause()" id="playPauseBtn">▶</button>
+                <button onclick="playNextSong()">⏭</button>
+                <button onclick="stopPlayback()">⏹</button>
+            </div>
+
+            <div id="playerStatus">Player stopped - Music continues in background</div>
         </div>
 
-        <div class="library-section">
-            <h2 class="section-title">Your Music Library</h2>
+        <div>
+            <h2>Your Music Library</h2>
             
-            <div class="folder-section">
-                <button class="folder-btn" onclick="chooseFolder()">📁 Choose Music Folder</button>
-                <button class="folder-btn" onclick="refreshLibrary()">🔄 Refresh Library</button>
-                <button class="folder-btn" onclick="showCurrentSongInfo()">ℹ️ Now Playing</button>
+            <div>
+                <button onclick="chooseFolder()">Choose Music Folder</button>
+                <button onclick="refreshLibrary()">Refresh Library</button>
+                <button onclick="showCurrentSongInfo()">Now Playing</button>
             </div>
 
-            <div class="songs-list" id="songsList">
-                <div class="empty-state">
-                    <div>📀</div>
-                    <p>No songs found. Choose a folder to get started.</p>
-                </div>
+            <div id="songsList">
+                <div>No songs found. Choose a folder to get started.</div>
             </div>
         </div>
     </div>
@@ -323,7 +52,6 @@
         let currentSongIndex = -1;
         let progressInterval;
 
-        // Load songs when page loads
         document.addEventListener('DOMContentLoaded', function() {
             loadSongs();
             startProgressUpdater();
@@ -345,19 +73,15 @@
             
             if (songs.length === 0) {
                 songsList.innerHTML = `
-                    <div class="empty-state">
-                        <div>📀</div>
-                        <p>No songs found in selected folder.</p>
-                        <p style="margin-top: 10px; font-size: 0.9em;">Make sure you've selected a folder with music files.</p>
-                    </div>
+                    <div>No songs found in selected folder.</div>
                 `;
                 return;
             }
 
             songsList.innerHTML = songs.map((song, index) => `
-                <div class="song-item" onclick="playSong(${index})">
-                    <span class="song-name">${song.name}</span>
-                    <span class="play-indicator" id="indicator-${index}" style="display: none;">▶ Playing</span>
+                <div onclick="playSong(${index})">
+                    <span>${song.name}</span>
+                    <span id="indicator-${index}" style="display:none;">▶ Playing</span>
                 </div>
             `).join('');
         }
@@ -365,11 +89,8 @@
         function playSong(index) {
             const song = songs[index];
             if (!song) return;
-
             Android.playSong(song.uri, song.name);
             currentSongIndex = index;
-            
-            // Update UI
             updateUI(song.name);
             updatePlayerStatus('Now playing - Continues in background', 'playing');
         }
@@ -387,7 +108,7 @@
             currentSongIndex = -1;
             updatePlayerStatus('Player stopped', 'stopped');
             document.getElementById('currentSongTitle').textContent = 'No song selected';
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+            document.querySelectorAll('[id^="indicator-"]').forEach(ind => ind.style.display = 'none');
         }
 
         function playPreviousSong() {
@@ -407,9 +128,7 @@
         function updateUI(songName) {
             document.getElementById('currentSongTitle').textContent = songName;
             updatePlayButton();
-            
-            // Update indicators
-            document.querySelectorAll('.play-indicator').forEach(ind => ind.style.display = 'none');
+            document.querySelectorAll('[id^="indicator-"]').forEach(ind => ind.style.display = 'none');
             if (currentSongIndex >= 0) {
                 document.getElementById(`indicator-${currentSongIndex}`).style.display = 'inline';
             }
@@ -423,7 +142,6 @@
         function updatePlayerStatus(status, className) {
             const statusElement = document.getElementById('playerStatus');
             statusElement.textContent = status;
-            statusElement.className = `status ${className}`;
         }
 
         function startProgressUpdater() {
@@ -448,9 +166,7 @@
                     currentTime.textContent = formatTime(position);
                     totalTime.textContent = formatTime(duration);
                 }
-            } catch (e) {
-                // Ignore errors when no song is playing
-            }
+            } catch (e) {}
         }
 
         function formatTime(milliseconds) {
@@ -460,17 +176,17 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
-        // Progress bar seeking
-        document.getElementById('progressBarContainer').addEventListener('click', function(e) {
-            const rect = this.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const width = rect.width;
-            const percentage = clickX / width;
-            
-            const duration = Android.getDuration();
-            if (duration > 0) {
-                const newPosition = Math.floor(duration * percentage);
-                Android.seekTo(newPosition);
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'progressBarContainer') {
+                const rect = e.target.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const width = rect.width;
+                const percentage = clickX / width;
+                const duration = Android.getDuration();
+                if (duration > 0) {
+                    const newPosition = Math.floor(duration * percentage);
+                    Android.seekTo(newPosition);
+                }
             }
         });
 
@@ -500,7 +216,6 @@
             alert('Error: ' + message);
         }
 
-        // Make these functions available for Android to call
         window.reloadLocalLibrary = function() {
             loadSongs();
             showMessage('New songs downloaded! Library refreshed.');
