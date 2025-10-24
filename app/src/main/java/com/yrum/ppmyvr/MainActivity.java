@@ -145,7 +145,7 @@ public class MainActivity extends Activity {
         mediaPlayer.setOnErrorListener((mp, what, extra) -> {
             Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
             runOnUiThread(() -> {
-                Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
+                Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show();
             });
             return false;
         });
