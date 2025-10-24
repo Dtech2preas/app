@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
     private FrameLayout rootLayout;
 
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https://music.preasx24.co.za";
+    private final String mainUrl = "https://dtech.preasx24.co.za";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -96,7 +96,8 @@ public class MainActivity extends Activity {
         webSettings.setDatabaseEnabled(true);
         webSettings.setMediaPlaybackRequiresUserGesture(false);
 
-        mWebView.setWebViewClient(new WebViewClient());
+        // Set up WebViewClient to inject our JavaScript
+        mWebView.setWebViewClient(new CustomWebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
 
         // Download listener - intercept file downloads and save to selected folder
@@ -104,8 +105,13 @@ public class MainActivity extends Activity {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 Log.d(TAG, "Download started: " + url);
-                String guessed = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                new AndroidBridge(MainActivity.this).downloadSong(url, guessed);
+                // Only handle HTTP/HTTPS URLs, not blob: or other protocols
+                if (url.startsWith("http://") || url.startsWith("https://")) {
+                    String guessed = URLUtil.guessFileName(url, contentDisposition, mimeType);
+                    new AndroidBridge(MainActivity.this).downloadSong(url, guessed);
+                } else {
+                    Log.d(TAG, "Skipping non-HTTP download: " + url);
+                }
             }
         });
 
@@ -119,6 +125,99 @@ public class MainActivity extends Activity {
         String treeUri = getSavedTreeUri();
         if (treeUri == null || treeUri.isEmpty()) {
             promptUserToChooseFolder();
+        }
+    }
+
+    // Custom WebViewClient to inject JavaScript for intercepting downloads
+    private class CustomWebViewClient extends WebViewClient {
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            // Inject JavaScript to intercept download button clicks
+            injectDownloadInterceptor();
+        }
+    }
+
+    // Inject JavaScript to intercept download button clicks
+    private void injectDownloadInterceptor() {
+        String jsCode = """
+            (function() {
+                // Override the downloadSearchResult function
+                const originalDownloadSearchResult = window.downloadSearchResult;
+                
+                window.downloadSearchResult = async function(index) {
+                    const song = window.searchResults[index];
+                    if (!song) return;
+                    
+                    console.log('Download intercepted for:', song.song_name);
+                    
+                    // Check if Android interface is available
+                    if (window.Android && typeof Android.downloadSongByServerIndex === 'function') {
+                        try {
+                            // First, ensure the song is on the server (replicate the original logic)
+                            await window.loadServerSongs();
+                            
+                            let serverSong = window.currentSongs.find(s => 
+                                s.song_name === song.song_name && s.artist === song.artist);
+                            
+                            if (!serverSong) {
+                                const addRes = await fetch('/add_song', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({
+                                        song_name: song.song_name,
+                                        artist: song.artist,
+                                        album: song.album || ''
+                                    })
+                                });
+                                const addData = await addRes.json();
+                                if (addData.error) {
+                                    window.showNotification('Failed to add song to server: ' + addData.error, 'error');
+                                    return;
+                                }
+                                await window.loadServerSongs();
+                                serverSong = window.currentSongs.find(s => 
+                                    s.song_name === song.song_name && s.artist === song.artist);
+                            }
+                            
+                            if (!serverSong) {
+                                window.showNotification('Song not available on server', 'error');
+                                return;
+                            }
+                            
+                            const serverIndex = serverSong.index;
+                            const fileName = song.artist + ' - ' + song.song_name + '.mp3';
+                            
+                            // Call Android to handle the download
+                            Android.downloadSongByServerIndex(serverIndex, fileName);
+                            
+                            // Update UI to show downloading state
+                            const downloadBtn = document.querySelectorAll('.download-btn')[index];
+                            if (downloadBtn) {
+                                downloadBtn.textContent = '...';
+                                downloadBtn.disabled = true;
+                            }
+                            
+                            return; // Stop the original download flow
+                            
+                        } catch (error) {
+                            console.error('Android download failed:', error);
+                            window.showNotification('Download failed', 'error');
+                        }
+                    } else {
+                        // Fall back to original method if Android interface not available
+                        if (originalDownloadSearchResult) {
+                            originalDownloadSearchResult.call(window, index);
+                        }
+                    }
+                };
+                
+                console.log('Download interceptor injected successfully');
+            })();
+            """;
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            mWebView.evaluateJavascript(jsCode, null);
         }
     }
 
@@ -432,6 +531,38 @@ public class MainActivity extends Activity {
             }
         }
 
+        // New method to handle downloads by server index
+        @JavascriptInterface
+        public void downloadSongByServerIndex(final int serverIndex, final String fileName) {
+            Log.d(TAG, "Download requested for serverIndex: " + serverIndex + ", fileName: " + fileName);
+            AsyncTask.execute(() -> {
+                try {
+                    String tree = getSavedTreeUri();
+                    if (tree == null || tree.isEmpty()) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Please select a folder first", Toast.LENGTH_LONG).show();
+                            mWebView.evaluateJavascript("if(window.showFolderSelectionRequired) showFolderSelectionRequired();", null);
+                        });
+                        return;
+                    }
+
+                    // Construct the actual download URL - use the file endpoint
+                    String downloadUrl = mainUrl + "/download/file/" + serverIndex;
+                    Log.d(TAG, "Downloading from: " + downloadUrl);
+                    
+                    // Use the existing download method
+                    downloadSong(downloadUrl, fileName);
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "downloadSongByServerIndex error: " + e.getMessage());
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "Download failed", Toast.LENGTH_SHORT).show();
+                        mWebView.evaluateJavascript("if(window.showNotification) showNotification('Download failed', 'error');", null);
+                    });
+                }
+            });
+        }
+
         // Media control methods
         @JavascriptInterface
         public void playSong(String songUri, String songName) {
@@ -516,9 +647,14 @@ public class MainActivity extends Activity {
                         safeName = URLUtil.guessFileName(urlString, null, null);
                     }
 
-                    // Clean filename
+                    // Clean filename - remove any invalid characters
                     safeName = safeName.replaceAll("[^a-zA-Z0-9.\\-\\s]", "_");
                     safeName = safeName.replaceAll("_{2,}", "_");
+                    
+                    // Ensure it has .mp3 extension
+                    if (!safeName.toLowerCase().endsWith(".mp3")) {
+                        safeName += ".mp3";
+                    }
 
                     DocumentFile existing = pickedDir.findFile(safeName);
                     if (existing != null) existing.delete();
@@ -539,6 +675,7 @@ public class MainActivity extends Activity {
                         conn.setRequestMethod("GET");
                         conn.setConnectTimeout(15000);
                         conn.setReadTimeout(30000);
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36");
                         conn.connect();
 
                         final int responseCode = conn.getResponseCode();
