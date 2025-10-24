@@ -64,7 +64,6 @@ public class MainActivity extends Activity {
 
     private WebView mWebView;
     private FrameLayout rootLayout;
-    private Button localBtn;
 
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://dtech.preasx24.co.za";
@@ -100,7 +99,7 @@ public class MainActivity extends Activity {
         mWebView.setWebViewClient(new WebViewClient());
         mWebView.addJavascriptInterface(new AndroidBridge(this), "Android");
 
-        // Download listener
+        // Download listener - intercept file downloads and save to selected folder
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -109,10 +108,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Add floating button to open the local player (assets HTML)
-        addLocalLibraryButton();
-
-        // Load website
+        // Load the main website (D-TECH MUSIC player)
         mWebView.loadUrl(mainUrl);
 
         // Check and create default folder if needed
@@ -188,32 +184,13 @@ public class MainActivity extends Activity {
         boolean defaultFolderCreated = prefs.getBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, false);
         
         if (!defaultFolderCreated) {
-            File musicDir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "SpotifyDL");
+            File musicDir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "D-TECH MUSIC");
             if (!musicDir.exists()) {
                 musicDir.mkdirs();
                 Log.d(TAG, "Default folder created: " + musicDir.getAbsolutePath());
             }
             prefs.edit().putBoolean(PREFS_KEY_DEFAULT_FOLDER_CREATED, true).apply();
         }
-    }
-
-    private void addLocalLibraryButton() {
-        localBtn = new Button(this);
-        localBtn.setText("Local Library");
-        localBtn.setAllCaps(false);
-        localBtn.setBackgroundResource(android.R.drawable.btn_default);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-        );
-        lp.gravity = Gravity.TOP | Gravity.END;
-        lp.topMargin = dpToPx(this, 12);
-        lp.rightMargin = dpToPx(this, 12);
-        rootLayout.addView(localBtn, lp);
-
-        localBtn.setOnClickListener(v -> {
-            mWebView.loadUrl("file:///android_asset/local_player.html");
-        });
     }
 
     private static int dpToPx(Context ctx, int dp) {
@@ -261,6 +238,9 @@ public class MainActivity extends Activity {
 
                         saveTreeUri(treeUri.toString());
                         Toast.makeText(this, "Folder saved for downloads.", Toast.LENGTH_SHORT).show();
+                        
+                        // Notify the web page that folder has been selected
+                        mWebView.evaluateJavascript("if(window.onFolderSelected) onFolderSelected();", null);
                     }
                 }
             } else {
@@ -332,12 +312,12 @@ public class MainActivity extends Activity {
         updateNotification();
     }
 
-    // Notification methods
+    // Notification methods - Professional music player notification
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Music Player",
+                    "D-TECH MUSIC Player",
                     NotificationManager.IMPORTANCE_LOW
             );
             channel.setDescription("Music playback controls");
@@ -375,14 +355,15 @@ public class MainActivity extends Activity {
         prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Build professional music player notification without MediaStyle
+        // Build professional music player notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle(isPlaying ? "Now Playing" : "Music Player")
+                .setContentTitle(isPlaying ? "Now Playing" : "D-TECH MUSIC")
                 .setContentText(isPlaying ? currentSongName : "No song playing")
                 .setContentIntent(pendingIntent)
                 .setOngoing(isPlaying)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
 
         if (isPlaying) {
@@ -391,9 +372,13 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
         }
 
-        // Use ic_delete for stop button since ic_media_stop doesn't exist
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
                .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
+
+        // For Android 13+, we need to request notification permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            builder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
+        }
 
         notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
@@ -402,7 +387,7 @@ public class MainActivity extends Activity {
         notificationManager.cancel(NOTIFICATION_ID);
     }
 
-    // JavaScript bridge
+    // JavaScript bridge for communication with the web app
     public class AndroidBridge {
         private final Context ctx;
 
@@ -517,7 +502,11 @@ public class MainActivity extends Activity {
                 try {
                     String tree = getSavedTreeUri();
                     if (tree == null || tree.isEmpty()) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Please select a folder first", Toast.LENGTH_LONG).show());
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Please select a folder first", Toast.LENGTH_LONG).show();
+                            // Notify web page that folder selection is needed
+                            mWebView.evaluateJavascript("if(window.showFolderSelectionRequired) showFolderSelectionRequired();", null);
+                        });
                         return;
                     }
                     Uri treeUri = Uri.parse(tree);
@@ -531,6 +520,9 @@ public class MainActivity extends Activity {
                     if (safeName == null || safeName.trim().isEmpty()) {
                         safeName = URLUtil.guessFileName(urlString, null, null);
                     }
+
+                    // Clean filename
+                    safeName = safeName.replaceAll("[^a-zA-Z0-9.-]", "_");
 
                     DocumentFile existing = pickedDir.findFile(safeName);
                     if (existing != null) existing.delete();
@@ -556,7 +548,10 @@ public class MainActivity extends Activity {
                         final int responseCode = conn.getResponseCode();
 
                         if (responseCode != HttpURLConnection.HTTP_OK) {
-                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show());
+                            runOnUiThread(() -> {
+                                Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show();
+                                mWebView.evaluateJavascript("if(window.onDownloadFailed) onDownloadFailed('HTTP " + responseCode + "');", null);
+                            });
                             return;
                         }
 
@@ -570,8 +565,20 @@ public class MainActivity extends Activity {
 
                         byte[] buffer = new byte[8192];
                         int len;
+                        long totalRead = 0;
+                        long contentLength = conn.getContentLength();
+                        
                         while ((len = in.read(buffer)) != -1) {
                             out.write(buffer, 0, len);
+                            totalRead += len;
+                            
+                            // Update progress if content length is known
+                            if (contentLength > 0) {
+                                final int progress = (int) ((totalRead * 100) / contentLength);
+                                runOnUiThread(() -> {
+                                    mWebView.evaluateJavascript("if(window.onDownloadProgress) onDownloadProgress('" + safeName + "', " + progress + ");", null);
+                                });
+                            }
                         }
                         out.flush();
 
@@ -579,7 +586,9 @@ public class MainActivity extends Activity {
                         runOnUiThread(() -> {
                             Toast.makeText(MainActivity.this, "Saved: " + finalSafeName, Toast.LENGTH_LONG).show();
                             try {
-                                mWebView.evaluateJavascript("if(window.reloadLocalLibrary) reloadLocalLibrary();", null);
+                                mWebView.evaluateJavascript("if(window.onDownloadComplete) onDownloadComplete('" + finalSafeName + "');", null);
+                                // Reload the library to show new songs
+                                mWebView.evaluateJavascript("if(window.reloadLibrary) reloadLibrary();", null);
                             } catch (Exception ignored) {}
                         });
 
@@ -591,7 +600,10 @@ public class MainActivity extends Activity {
 
                 } catch (final Exception e) {
                     Log.e(TAG, "downloadSong error: " + e.getMessage());
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        mWebView.evaluateJavascript("if(window.onDownloadFailed) onDownloadFailed('" + e.getMessage() + "');", null);
+                    });
                 }
             });
         }
