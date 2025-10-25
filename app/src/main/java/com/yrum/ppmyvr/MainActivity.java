@@ -195,6 +195,7 @@ public class MainActivity extends Activity {
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
             }
+            updateNotification();
         });
 
         mediaPlayer.setOnPreparedListener(mp -> {
@@ -207,15 +208,10 @@ public class MainActivity extends Activity {
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
             }
-            
-            // REMOVED: No longer show "Now playing" toast
-            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Now playing: " + currentSongName, Toast.LENGTH_SHORT).show());
         });
 
         mediaPlayer.setOnErrorListener((mp, what, extra) -> {
             Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
-            // REMOVED: No longer show error toast
-            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
             return false;
         });
     }
@@ -229,6 +225,7 @@ public class MainActivity extends Activity {
     private void handleIntent(Intent intent) {
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
+            Log.d(TAG, "Handle intent action: " + action);
             switch (action) {
                 case "PLAY":
                     playCurrentSong();
@@ -260,7 +257,7 @@ public class MainActivity extends Activity {
     }
 
     // Media playback methods using Android MediaPlayer
-    private void playSong(String songUri, String songName) {
+    public void playSong(String songUri, String songName) {
         try {
             // Stop current playback if any
             if (mediaPlayer.isPlaying()) {
@@ -283,8 +280,6 @@ public class MainActivity extends Activity {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
-            // REMOVED: No longer show error toast
-            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
         }
     }
 
@@ -351,18 +346,26 @@ public class MainActivity extends Activity {
 
     @SuppressLint("UnspecifiedImmutableFlag")
     private void updateNotification() {
+        // Use system drawables as fallback
+        int playIcon = android.R.drawable.ic_media_play;
+        int pauseIcon = android.R.drawable.ic_media_pause;
+        int nextIcon = android.R.drawable.ic_media_next;
+        int prevIcon = android.R.drawable.ic_media_previous;
+        int stopIcon = android.R.drawable.ic_menu_close_clear_cancel;
+        int smallIcon = android.R.drawable.ic_media_play;
+
         // Create media style notification for better appearance
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_music_note) // Use your own icon
+            .setSmallIcon(smallIcon)
             .setContentTitle("D-TECH MUSIC")
-            .setContentText(isPlaying ? "▶ " + currentSongName : "Paused: " + currentSongName)
+            .setContentText(isPlaying ? "▶ " + (currentSongName.length() > 30 ? currentSongName.substring(0, 30) + "..." : currentSongName) : "Paused")
             .setOngoing(isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true) // No notification sound
             .setOnlyAlertOnce(true); // Prevent repeated alerts
 
-        // Create broadcast intents for media controls (NOT activity intents)
+        // Create broadcast intents for media controls
         Intent playIntent = new Intent(this, MediaActionReceiver.class);
         playIntent.setAction("PLAY");
         PendingIntent playPendingIntent = PendingIntent.getBroadcast(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -375,26 +378,30 @@ public class MainActivity extends Activity {
         nextIntent.setAction("NEXT");
         PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
+        Intent prevIntent = new Intent(this, MediaActionReceiver.class);
+        prevIntent.setAction("PREVIOUS");
+        PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
         Intent stopIntent = new Intent(this, MediaActionReceiver.class);
         stopIntent.setAction("STOP");
-        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 4, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 5, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         // Add actions based on current state
-        builder.addAction(R.drawable.ic_skip_previous, "Previous", nextPendingIntent); // Using next as previous for now
+        builder.addAction(prevIcon, "Previous", prevPendingIntent);
 
         if (isPlaying) {
-            builder.addAction(R.drawable.ic_pause, "Pause", pausePendingIntent);
+            builder.addAction(pauseIcon, "Pause", pausePendingIntent);
         } else {
-            builder.addAction(R.drawable.ic_play, "Play", playPendingIntent);
+            builder.addAction(playIcon, "Play", playPendingIntent);
         }
 
-        builder.addAction(R.drawable.ic_skip_next, "Next", nextPendingIntent)
-               .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent);
+        builder.addAction(nextIcon, "Next", nextPendingIntent)
+               .addAction(stopIcon, "Stop", stopPendingIntent);
 
         // Use media style for better appearance on newer devices
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1, 2) // Show play/pause and next in compact view
+                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
             );
         }
 
