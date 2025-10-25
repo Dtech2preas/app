@@ -364,26 +364,31 @@ public class MainActivity extends Activity {
             .setSilent(true) // No notification sound
             .setOnlyAlertOnce(true); // Prevent repeated alerts
 
-        // Create broadcast intents for media controls
-        Intent playIntent = new Intent(this, MainActionReceiver.class);
+        // Create activity intents for media controls (direct launch - no BroadcastReceiver)
+        Intent playIntent = new Intent(this, MainActivity.class);
         playIntent.setAction("PLAY");
-        PendingIntent playPendingIntent = PendingIntent.getBroadcast(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        playIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent playPendingIntent = PendingIntent.getActivity(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent pauseIntent = new Intent(this, MainActionReceiver.class);
+        Intent pauseIntent = new Intent(this, MainActivity.class);
         pauseIntent.setAction("PAUSE");
-        PendingIntent pausePendingIntent = PendingIntent.getBroadcast(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        pauseIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent pausePendingIntent = PendingIntent.getActivity(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent nextIntent = new Intent(this, MainActionReceiver.class);
+        Intent nextIntent = new Intent(this, MainActivity.class);
         nextIntent.setAction("NEXT");
-        PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        nextIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent nextPendingIntent = PendingIntent.getActivity(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent prevIntent = new Intent(this, MainActionReceiver.class);
+        Intent prevIntent = new Intent(this, MainActivity.class);
         prevIntent.setAction("PREVIOUS");
-        PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        prevIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent stopIntent = new Intent(this, MainActionReceiver.class);
+        Intent stopIntent = new Intent(this, MainActivity.class);
         stopIntent.setAction("STOP");
-        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 5, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        stopIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent stopPendingIntent = PendingIntent.getActivity(this, 5, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         // Add actions based on current state
         builder.addAction(prevIcon, "Previous", prevPendingIntent);
