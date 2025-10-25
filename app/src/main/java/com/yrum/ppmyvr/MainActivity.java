@@ -27,7 +27,6 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
-import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import org.json.JSONArray;
@@ -354,7 +353,7 @@ public class MainActivity extends Activity {
         int stopIcon = android.R.drawable.ic_menu_close_clear_cancel;
         int smallIcon = android.R.drawable.ic_media_play;
 
-        // Create media style notification for better appearance
+        // Create a simple notification without MediaStyle
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setContentTitle("D-TECH MUSIC")
@@ -366,23 +365,23 @@ public class MainActivity extends Activity {
             .setOnlyAlertOnce(true); // Prevent repeated alerts
 
         // Create broadcast intents for media controls
-        Intent playIntent = new Intent(this, MediaActionReceiver.class);
+        Intent playIntent = new Intent(this, MainActionReceiver.class);
         playIntent.setAction("PLAY");
         PendingIntent playPendingIntent = PendingIntent.getBroadcast(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent pauseIntent = new Intent(this, MediaActionReceiver.class);
+        Intent pauseIntent = new Intent(this, MainActionReceiver.class);
         pauseIntent.setAction("PAUSE");
         PendingIntent pausePendingIntent = PendingIntent.getBroadcast(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent nextIntent = new Intent(this, MediaActionReceiver.class);
+        Intent nextIntent = new Intent(this, MainActionReceiver.class);
         nextIntent.setAction("NEXT");
         PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent prevIntent = new Intent(this, MediaActionReceiver.class);
+        Intent prevIntent = new Intent(this, MainActionReceiver.class);
         prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getBroadcast(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent stopIntent = new Intent(this, MediaActionReceiver.class);
+        Intent stopIntent = new Intent(this, MainActionReceiver.class);
         stopIntent.setAction("STOP");
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 5, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
@@ -397,13 +396,6 @@ public class MainActivity extends Activity {
 
         builder.addAction(nextIcon, "Next", nextPendingIntent)
                .addAction(stopIcon, "Stop", stopPendingIntent);
-
-        // Use media style for better appearance on newer devices
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
-            );
-        }
 
         notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
