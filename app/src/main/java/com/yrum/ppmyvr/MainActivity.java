@@ -16,9 +16,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -37,8 +34,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
 
 public class MainActivity extends Activity {
 
@@ -103,11 +98,8 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // CRITICAL: Enhanced WebViewClient to intercept ALL download requests
-        mWebView.setWebViewClient(new CustomWebViewClient());
-
-        // Set up WebChromeClient for file downloads
-        mWebView.setWebChromeClient(new WebChromeClient());
+        // Simple WebViewClient - don't interfere with website
+        mWebView.setWebViewClient(new WebViewClient());
 
         // Load the main website
         mWebView.loadUrl(mainUrl);
@@ -126,6 +118,9 @@ public class MainActivity extends Activity {
         if (!downloadFolder.exists()) {
             boolean created = downloadFolder.mkdirs();
             Log.d(TAG, "Download folder created: " + created + " at " + downloadFolder.getAbsolutePath());
+            if (!created) {
+                Log.e(TAG, "FAILED to create download folder!");
+            }
         } else {
             Log.d(TAG, "Download folder already exists: " + downloadFolder.getAbsolutePath());
         }
@@ -133,109 +128,6 @@ public class MainActivity extends Activity {
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
         Toast.makeText(this, "Downloads will be saved to: " + downloadFolder.getName(), Toast.LENGTH_LONG).show();
-    }
-
-    // CRITICAL: Enhanced WebViewClient that intercepts ALL file download requests
-    private class CustomWebViewClient extends WebViewClient {
-        private Map<String, Boolean> interceptedUrls = new HashMap<>();
-
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            Log.d(TAG, "shouldOverrideUrlLoading: " + url);
-            
-            if (isDownloadUrl(url) && !interceptedUrls.containsKey(url)) {
-                interceptedUrls.put(url, true);
-                String fileName = extractFileNameFromUrl(url);
-                bridge.downloadSong(url, fileName);
-                return true; // Prevent WebView from loading the URL
-            }
-            
-            return false;
-        }
-
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                String url = request.getUrl().toString();
-                Log.d(TAG, "shouldOverrideUrlLoading (request): " + url);
-                
-                if (isDownloadUrl(url) && !interceptedUrls.containsKey(url)) {
-                    interceptedUrls.put(url, true);
-                    String fileName = extractFileNameFromUrl(url);
-                    bridge.downloadSong(url, fileName);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        @Override
-        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            // This intercepts ALL requests including API calls and file downloads
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                String url = request.getUrl().toString();
-                
-                // Log download-related requests for debugging
-                if (url.contains("/download/") || url.contains("/file/")) {
-                    Log.d(TAG, "Intercepting request: " + url);
-                }
-            }
-            return super.shouldInterceptRequest(view, request);
-        }
-
-        private boolean isDownloadUrl(String url) {
-            if (url == null) return false;
-            
-            String lowerUrl = url.toLowerCase();
-            return lowerUrl.contains("/download/") ||
-                   lowerUrl.contains("/file/") ||
-                   lowerUrl.endsWith(".mp3") ||
-                   lowerUrl.endsWith(".m4a") ||
-                   lowerUrl.endsWith(".wav") ||
-                   lowerUrl.endsWith(".ogg") ||
-                   lowerUrl.endsWith(".opus") ||
-                   lowerUrl.contains("?download=true") ||
-                   lowerUrl.contains("&download=true") ||
-                   (lowerUrl.contains("download") && (lowerUrl.contains("file") || lowerUrl.contains("blob")));
-        }
-
-        private String extractFileNameFromUrl(String url) {
-            try {
-                // Try to extract filename from URL
-                if (url.contains("/download/file/")) {
-                    // Extract song index and create filename
-                    String[] parts = url.split("/");
-                    for (int i = 0; i < parts.length; i++) {
-                        if (parts[i].equals("file") && i + 1 < parts.length) {
-                            return "song_" + parts[i + 1] + ".opus";
-                        }
-                    }
-                } else if (url.contains("/download/")) {
-                    // Extract song index from download URL
-                    String[] parts = url.split("/");
-                    for (int i = 0; i < parts.length; i++) {
-                        if (parts[i].equals("download") && i + 1 < parts.length) {
-                            return "song_" + parts[i + 1] + ".opus";
-                        }
-                    }
-                }
-                
-                // Fallback: use last part of URL as filename
-                String[] pathSegments = url.split("/");
-                String lastSegment = pathSegments[pathSegments.length - 1];
-                if (lastSegment.contains("?")) {
-                    lastSegment = lastSegment.split("\\?")[0];
-                }
-                if (!lastSegment.contains(".")) {
-                    lastSegment += ".opus";
-                }
-                return lastSegment;
-                
-            } catch (Exception e) {
-                Log.e(TAG, "Error extracting filename from URL: " + e.getMessage());
-                return "download_" + System.currentTimeMillis() + ".opus";
-            }
-        }
     }
 
     private void initializeMediaPlayer() {
@@ -443,22 +335,29 @@ public class MainActivity extends Activity {
             try {
                 JSONArray arr = new JSONArray();
                 if (downloadFolder == null || !downloadFolder.exists()) {
+                    Log.e(TAG, "Download folder is null or doesn't exist");
                     return arr.toString();
                 }
 
                 File[] files = downloadFolder.listFiles();
-                if (files != null) {
-                    for (File file : files) {
-                        if (file.isFile()) {
-                            String name = file.getName();
-                            if (name.toLowerCase().endsWith(".mp3") || name.toLowerCase().endsWith(".m4a") || 
-                                name.toLowerCase().endsWith(".wav") || name.toLowerCase().endsWith(".ogg") ||
-                                name.toLowerCase().endsWith(".opus")) {
-                                JSONObject o = new JSONObject();
-                                o.put("name", name);
-                                o.put("uri", Uri.fromFile(file).toString());
-                                arr.put(o);
-                            }
+                if (files == null) {
+                    Log.e(TAG, "Cannot list files in download folder");
+                    return arr.toString();
+                }
+
+                Log.d(TAG, "Found " + files.length + " files in download folder");
+                
+                for (File file : files) {
+                    if (file.isFile()) {
+                        String name = file.getName();
+                        if (name.toLowerCase().endsWith(".mp3") || name.toLowerCase().endsWith(".m4a") || 
+                            name.toLowerCase().endsWith(".wav") || name.toLowerCase().endsWith(".ogg") ||
+                            name.toLowerCase().endsWith(".opus")) {
+                            JSONObject o = new JSONObject();
+                            o.put("name", name);
+                            o.put("uri", Uri.fromFile(file).toString());
+                            arr.put(o);
+                            Log.d(TAG, "Added song: " + name);
                         }
                     }
                 }
@@ -529,205 +428,84 @@ public class MainActivity extends Activity {
             }
         }
 
-        // CRITICAL: Enhanced download method that handles Flask server downloads
+        // SIMPLE AND RELIABLE DOWNLOAD METHOD
         @android.webkit.JavascriptInterface
-        public void downloadSong(final String urlString, final String suggestedFileName) {
-            Log.d(TAG, "downloadSong called from JS: " + urlString + " -> " + suggestedFileName);
-            new DownloadTask().execute(urlString, suggestedFileName);
-        }
-
-        private class DownloadTask extends AsyncTask<String, Integer, Boolean> {
-            private String fileName;
-            private String errorMessage = "";
-
-            @Override
-            protected Boolean doInBackground(String... params) {
-                String urlString = params[0];
-                String suggestedFileName = params[1];
-                
-                // Ensure download folder exists
-                if (downloadFolder == null || !downloadFolder.exists()) {
-                    initializeDownloadFolder();
-                }
-
-                // Clean filename - prioritize the suggested filename
-                if (suggestedFileName != null && !suggestedFileName.isEmpty()) {
-                    fileName = cleanFileName(suggestedFileName);
-                } else {
-                    // Extract from URL if no suggested filename
-                    fileName = extractFileNameFromUrl(urlString);
-                }
-                
-                File outputFile = new File(downloadFolder, fileName);
-
-                Log.d(TAG, "Starting download: " + fileName);
-                Log.d(TAG, "From URL: " + urlString);
-                Log.d(TAG, "Saving to: " + outputFile.getAbsolutePath());
-
-                HttpURLConnection connection = null;
-                InputStream inputStream = null;
-                FileOutputStream outputStream = null;
-
+        public void downloadSong(final String urlString, final String fileName) {
+            Log.d(TAG, "DOWNLOAD STARTED: " + fileName + " from: " + urlString);
+            
+            new Thread(() -> {
                 try {
-                    // Create URL connection
+                    // Ensure download folder exists
+                    if (downloadFolder == null || !downloadFolder.exists()) {
+                        initializeDownloadFolder();
+                    }
+
+                    File outputFile = new File(downloadFolder, fileName);
+                    
+                    Log.d(TAG, "Saving to: " + outputFile.getAbsolutePath());
+
                     URL url = new URL(urlString);
-                    connection = (HttpURLConnection) url.openConnection();
+                    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
                     connection.setConnectTimeout(30000);
                     connection.setReadTimeout(30000);
-                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
                     
-                    // Add cookies and headers for Flask server
-                    connection.setRequestProperty("Accept", "*/*");
-                    connection.setRequestProperty("Connection", "keep-alive");
+                    InputStream inputStream = connection.getInputStream();
+                    FileOutputStream outputStream = new FileOutputStream(outputFile);
 
-                    connection.connect();
-
-                    int responseCode = connection.getResponseCode();
-                    Log.d(TAG, "HTTP Response Code: " + responseCode);
-                    
-                    if (responseCode != HttpURLConnection.HTTP_OK) {
-                        errorMessage = "HTTP " + responseCode;
-                        return false;
-                    }
-
-                    // Check content type
-                    String contentType = connection.getContentType();
-                    Log.d(TAG, "Content-Type: " + contentType);
-                    
-                    // Check if this is a file download (not JSON)
-                    if (contentType != null && contentType.contains("application/json")) {
-                        errorMessage = "Server returned JSON instead of file - download may be queued";
-                        return false;
-                    }
-
-                    // Get input stream
-                    inputStream = connection.getInputStream();
-                    
-                    // Create output file
-                    outputStream = new FileOutputStream(outputFile);
-
-                    // Copy data
                     byte[] buffer = new byte[8192];
                     int bytesRead;
                     long totalBytes = 0;
-                    long contentLength = connection.getContentLength();
-                    
-                    Log.d(TAG, "Content-Length: " + contentLength);
 
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, bytesRead);
                         totalBytes += bytesRead;
-
-                        // Update progress if needed
-                        if (contentLength > 0) {
-                            int progress = (int) ((totalBytes * 100) / contentLength);
-                            publishProgress(progress);
-                        }
                     }
 
                     outputStream.flush();
-                    Log.d(TAG, "Download completed: " + totalBytes + " bytes");
+                    outputStream.close();
+                    inputStream.close();
 
-                    // Verify file was created
+                    // Verify the file
                     if (outputFile.exists() && outputFile.length() > 0) {
-                        Log.d(TAG, "File verified: " + outputFile.getAbsolutePath() + " size: " + outputFile.length());
-                        return true;
+                        Log.d(TAG, "DOWNLOAD SUCCESS: " + fileName + " (" + outputFile.length() + " bytes)");
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Downloaded: " + fileName, Toast.LENGTH_LONG).show();
+                            // Refresh the web page
+                            mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
+                        });
                     } else {
-                        errorMessage = "File was not created properly";
-                        return false;
+                        Log.e(TAG, "DOWNLOAD FAILED: File not created properly");
+                        runOnUiThread(() -> 
+                            Toast.makeText(MainActivity.this, "Download failed: File not created", Toast.LENGTH_LONG).show());
                     }
 
                 } catch (Exception e) {
-                    errorMessage = e.getMessage();
-                    Log.e(TAG, "Download error: " + e.getMessage(), e);
-                    return false;
-                } finally {
-                    // Clean up
-                    try {
-                        if (inputStream != null) inputStream.close();
-                        if (outputStream != null) outputStream.close();
-                        if (connection != null) connection.disconnect();
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error closing streams: " + e.getMessage());
-                    }
+                    Log.e(TAG, "DOWNLOAD ERROR: " + e.getMessage(), e);
+                    runOnUiThread(() -> 
+                        Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
                 }
-            }
+            }).start();
+        }
 
-            @Override
-            protected void onProgressUpdate(Integer... values) {
-                int progress = values[0];
-                Log.d(TAG, "Download progress: " + progress + "%");
+        // Test method to check download folder
+        @android.webkit.JavascriptInterface
+        public String testDownloadFolder() {
+            if (downloadFolder == null) {
+                return "Download folder is null";
             }
-
-            @Override
-            protected void onPostExecute(Boolean success) {
-                if (success) {
-                    Toast.makeText(MainActivity.this, "Download saved: " + fileName, Toast.LENGTH_LONG).show();
-                    Log.d(TAG, "SUCCESS: File saved to " + downloadFolder.getAbsolutePath() + "/" + fileName);
-                    
-                    // Refresh the library in the web page
-                    mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
-                } else {
-                    Toast.makeText(MainActivity.this, "Download failed: " + errorMessage, Toast.LENGTH_LONG).show();
-                    Log.e(TAG, "FAILED: " + errorMessage);
-                }
+            
+            if (!downloadFolder.exists()) {
+                return "Download folder doesn't exist: " + downloadFolder.getAbsolutePath();
             }
-
-            private String cleanFileName(String fileName) {
-                if (fileName == null || fileName.trim().isEmpty()) {
-                    return "download_" + System.currentTimeMillis() + ".opus";
-                }
-                
-                // Remove invalid characters
-                String cleanName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
-                cleanName = cleanName.replaceAll("_{2,}", "_");
-                cleanName = cleanName.trim();
-                
-                if (cleanName.isEmpty()) {
-                    cleanName = "download_" + System.currentTimeMillis() + ".opus";
-                }
-                
-                // Ensure extension (your server uses .opus files)
-                if (!cleanName.contains(".")) {
-                    cleanName += ".opus";
-                }
-                
-                return cleanName;
+            
+            File[] files = downloadFolder.listFiles();
+            if (files == null) {
+                return "Cannot list files in download folder";
             }
-
-            private String extractFileNameFromUrl(String url) {
-                try {
-                    if (url.contains("/download/file/")) {
-                        String[] parts = url.split("/");
-                        for (int i = 0; i < parts.length; i++) {
-                            if (parts[i].equals("file") && i + 1 < parts.length) {
-                                return "song_" + parts[i + 1] + ".opus";
-                            }
-                        }
-                    } else if (url.contains("/download/")) {
-                        String[] parts = url.split("/");
-                        for (int i = 0; i < parts.length; i++) {
-                            if (parts[i].equals("download") && i + 1 < parts.length) {
-                                return "song_" + parts[i + 1] + ".opus";
-                            }
-                        }
-                    }
-                    
-                    String[] pathSegments = url.split("/");
-                    String lastSegment = pathSegments[pathSegments.length - 1];
-                    if (lastSegment.contains("?")) {
-                        lastSegment = lastSegment.split("\\?")[0];
-                    }
-                    if (!lastSegment.contains(".")) {
-                        lastSegment += ".opus";
-                    }
-                    return lastSegment;
-                    
-                } catch (Exception e) {
-                    return "download_" + System.currentTimeMillis() + ".opus";
-                }
-            }
+            
+            return "Download folder OK: " + downloadFolder.getAbsolutePath() + 
+                   " | Files: " + files.length;
         }
     }
 
