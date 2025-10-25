@@ -14,9 +14,6 @@ public class MediaActionReceiver extends BroadcastReceiver {
         Log.d(TAG, "Media action received: " + action);
 
         // Forward the action to MainActivity
-        Intent serviceIntent = new Intent(context, MusicService.class);
-        context.startService(serviceIntent);
-
         Intent activityIntent = new Intent(context, MainActivity.class);
         activityIntent.setAction(action);
         activityIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
