@@ -18,6 +18,9 @@ import android.os.Environment;
 import android.util.Log;
 import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -36,7 +39,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
 
@@ -85,7 +89,7 @@ public class MainActivity extends Activity {
         // Handle media actions from notification when app is launched
         handleIntent(getIntent());
 
-        // Initialize download folder
+        // Initialize download folder - THIS IS KEY!
         initializeDownloadFolder();
 
         // WebView setup
@@ -101,20 +105,16 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Simple WebViewClient - don't interfere with website
-        mWebView.setWebViewClient(new WebViewClient());
+        // CRITICAL: Set up WebViewClient to intercept ALL download requests
+        mWebView.setWebViewClient(new CustomWebViewClient());
 
-        // Download listener - intercept file downloads and save to our predetermined folder
+        // CRITICAL: Set up DownloadListener to catch file downloads
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
-            public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                Log.d(TAG, "Download started: " + url);
-                
-                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
-                    String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
-                    Log.d(TAG, "Downloading file: " + fileName);
-                    bridge.downloadSong(url, fileName);
-                }
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+                Log.d(TAG, "DownloadListener triggered: " + url);
+                String fileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
+                bridge.downloadSong(url, fileName);
             }
         });
 
@@ -123,18 +123,7 @@ public class MainActivity extends Activity {
     }
 
     private void initializeDownloadFolder() {
-        // Try to get saved folder path first
-        String savedPath = getSavedDownloadFolderPath();
-        
-        if (savedPath != null) {
-            downloadFolder = new File(savedPath);
-            if (downloadFolder.exists() && downloadFolder.isDirectory()) {
-                Log.d(TAG, "Using saved download folder: " + downloadFolder.getAbsolutePath());
-                return;
-            }
-        }
-        
-        // Create default download folder in Music directory
+        // Create download folder in Music directory
         if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
             File musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC);
             downloadFolder = new File(musicDir, "D-TECH MUSIC");
@@ -153,6 +142,71 @@ public class MainActivity extends Activity {
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
         Toast.makeText(this, "Downloads will be saved to: " + downloadFolder.getName(), Toast.LENGTH_LONG).show();
+    }
+
+    // CRITICAL: Custom WebViewClient that intercepts download requests
+    private class CustomWebViewClient extends WebViewClient {
+        private Map<String, Boolean> processedUrls = new HashMap<>();
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            Log.d(TAG, "shouldOverrideUrlLoading: " + url);
+            
+            // Check if this is a download URL
+            if (isDownloadUrl(url) && !processedUrls.containsKey(url)) {
+                processedUrls.put(url, true);
+                String fileName = URLUtil.guessFileName(url, null, null);
+                bridge.downloadSong(url, fileName);
+                return true; // Prevent WebView from loading the URL
+            }
+            
+            return false; // Let WebView handle the URL
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                String url = request.getUrl().toString();
+                Log.d(TAG, "shouldOverrideUrlLoading (request): " + url);
+                
+                if (isDownloadUrl(url) && !processedUrls.containsKey(url)) {
+                    processedUrls.put(url, true);
+                    String fileName = URLUtil.guessFileName(url, null, null);
+                    bridge.downloadSong(url, fileName);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            // This method can intercept all requests including API calls
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                String url = request.getUrl().toString();
+                
+                // Intercept download file requests
+                if (url.contains("/download/file/") || url.contains("/download/")) {
+                    Log.d(TAG, "Intercepting download request: " + url);
+                    // We don't intercept here, just log for debugging
+                }
+            }
+            return super.shouldInterceptRequest(view, request);
+        }
+
+        private boolean isDownloadUrl(String url) {
+            if (url == null) return false;
+            
+            String lowerUrl = url.toLowerCase();
+            return lowerUrl.contains("/download/") ||
+                   lowerUrl.endsWith(".mp3") ||
+                   lowerUrl.endsWith(".m4a") ||
+                   lowerUrl.endsWith(".wav") ||
+                   lowerUrl.endsWith(".ogg") ||
+                   lowerUrl.contains("?download=true") ||
+                   lowerUrl.contains("&download=true") ||
+                   (lowerUrl.contains("download") && lowerUrl.contains("file"));
+        }
     }
 
     private void initializeMediaPlayer() {
@@ -445,9 +499,10 @@ public class MainActivity extends Activity {
             }
         }
 
-        // SIMPLE AND RELIABLE DOWNLOAD METHOD
+        // CRITICAL: Download method that will be called from JavaScript
         @android.webkit.JavascriptInterface
         public void downloadSong(final String urlString, final String suggestedFileName) {
+            Log.d(TAG, "downloadSong called from JS: " + urlString + " -> " + suggestedFileName);
             new DownloadTask().execute(urlString, suggestedFileName);
         }
 
@@ -545,12 +600,19 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            protected void onProgressUpdate(Integer... values) {
+                // You can update progress in the web page if needed
+                int progress = values[0];
+                Log.d(TAG, "Download progress: " + progress + "%");
+            }
+
+            @Override
             protected void onPostExecute(Boolean success) {
                 if (success) {
                     Toast.makeText(MainActivity.this, "Download saved: " + fileName, Toast.LENGTH_LONG).show();
                     Log.d(TAG, "SUCCESS: File saved to " + downloadFolder.getAbsolutePath() + "/" + fileName);
                     
-                    // Refresh the library
+                    // Refresh the library in the web page
                     mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
                 } else {
                     Toast.makeText(MainActivity.this, "Download failed: " + errorMessage, Toast.LENGTH_LONG).show();
