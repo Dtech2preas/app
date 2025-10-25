@@ -52,7 +52,7 @@
 
         <!-- Media Action Receiver for notification buttons -->
         <receiver
-            android:name=".MediaActionReceiver"
+            android:name=".MainActionReceiver"
             android:enabled="true"
             android:exported="false">
             <intent-filter>
