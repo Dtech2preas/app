@@ -5,7 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-public class MediaActionReceiver extends BroadcastReceiver {
+public class MainActionReceiver extends BroadcastReceiver {
     private static final String TAG = "MainActionReceiver";
 
     @Override
