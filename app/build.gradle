@@ -35,7 +35,4 @@ dependencies {
 
     // DocumentFile support
     implementation 'androidx.documentfile:documentfile:1.1.0'
-
-    // Media compatibility for notification
-    implementation 'androidx.media:media:1.7.0'
 }
