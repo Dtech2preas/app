@@ -50,20 +50,6 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Media Action Receiver for notification buttons -->
-        <receiver
-            android:name=".MainActionReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="PLAY" />
-                <action android:name="PAUSE" />
-                <action android:name="STOP" />
-                <action android:name="NEXT" />
-                <action android:name="PREVIOUS" />
-            </intent-filter>
-        </receiver>
-
         <!-- Ad Popup Activity -->
         <activity android:name="com.yrum.ppmyvr.PopupWebViewActivity" />
 
