@@ -6,8 +6,11 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -16,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.IBinder;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -43,39 +47,71 @@ public class MainActivity extends Activity {
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "spotifydl_prefs";
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
-    
+
     // Notification
     private static final String CHANNEL_ID = "music_player_channel";
     private static final int NOTIFICATION_ID = 1;
     private NotificationManager notificationManager;
-    
+
     // Media Player
     private MediaPlayer mediaPlayer;
     private boolean isPrepared = false;
     private boolean isPlaying = false;
     private String currentSongName = "";
     private String currentSongUri = "";
-    
+
     private WebView mWebView;
     private FrameLayout rootLayout;
     private AndroidBridge bridge;
-    
+
+    // Service for background playback
+    private MusicService musicService;
+    private boolean isServiceBound = false;
+
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://music.preasx24.co.za";
-    
+
     // Our predetermined download folder
     private File downloadFolder;
     private Handler downloadCheckHandler = new Handler();
     private Map<String, Runnable> downloadCheckRunnables = new HashMap<>();
+
+    // Track if this is first app launch to show folder notification only once
+    private boolean isFirstLaunch = true;
+
+    // Service Connection
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
+            musicService = binder.getService();
+            isServiceBound = true;
+            
+            // Sync current state with service
+            if (isPlaying) {
+                musicService.updatePlaybackState(true, currentSongName, currentSongUri);
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isServiceBound = false;
+        }
+    };
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
+
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Start and bind to Music Service for background playback
+        Intent serviceIntent = new Intent(this, MusicService.class);
+        startService(serviceIntent);
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
 
         // Initialize MediaPlayer
         initializeMediaPlayer();
@@ -122,23 +158,31 @@ public class MainActivity extends Activity {
         } else {
             downloadFolder = new File(getFilesDir(), "D-TECH MUSIC");
         }
-        
+
         // Create folder if it doesn't exist
         if (!downloadFolder.exists()) {
             boolean created = downloadFolder.mkdirs();
             Log.d(TAG, "Download folder created: " + created + " at " + downloadFolder.getAbsolutePath());
             if (!created) {
                 Log.e(TAG, "FAILED to create download folder!");
-                Toast.makeText(this, "Failed to create download folder!", Toast.LENGTH_LONG).show();
+                // Don't show toast every time
+                if (isFirstLaunch) {
+                    Toast.makeText(this, "Failed to create download folder!", Toast.LENGTH_LONG).show();
+                }
                 return;
             }
         } else {
             Log.d(TAG, "Download folder already exists: " + downloadFolder.getAbsolutePath());
         }
-        
+
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
-        Toast.makeText(this, "Downloads will be saved to: " + downloadFolder.getAbsolutePath(), Toast.LENGTH_LONG).show();
+        
+        // Only show folder location on first launch
+        if (isFirstLaunch) {
+            Toast.makeText(this, "Downloads saved to: D-TECH MUSIC folder", Toast.LENGTH_SHORT).show();
+            isFirstLaunch = false;
+        }
     }
 
     private void initializeMediaPlayer() {
@@ -146,6 +190,11 @@ public class MainActivity extends Activity {
         mediaPlayer.setOnCompletionListener(mp -> {
             isPlaying = false;
             runOnUiThread(() -> mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null));
+            
+            // Update service
+            if (isServiceBound) {
+                musicService.updatePlaybackState(false, currentSongName, currentSongUri);
+            }
         });
 
         mediaPlayer.setOnPreparedListener(mp -> {
@@ -153,12 +202,20 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Now playing: " + currentSongName, Toast.LENGTH_SHORT).show());
+            
+            // Update service
+            if (isServiceBound) {
+                musicService.updatePlaybackState(true, currentSongName, currentSongUri);
+            }
+            
+            // REMOVED: No longer show "Now playing" toast
+            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Now playing: " + currentSongName, Toast.LENGTH_SHORT).show());
         });
 
         mediaPlayer.setOnErrorListener((mp, what, extra) -> {
             Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
+            // REMOVED: No longer show error toast
+            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
             return false;
         });
     }
@@ -210,18 +267,24 @@ public class MainActivity extends Activity {
                 mediaPlayer.stop();
             }
             mediaPlayer.reset();
-            
+
             currentSongName = songName;
             currentSongUri = songUri;
             isPrepared = false;
-            
+
             // Set data source and prepare async
             mediaPlayer.setDataSource(this, Uri.parse(songUri));
             mediaPlayer.prepareAsync();
             updateNotification();
+            
+            // Update service
+            if (isServiceBound) {
+                musicService.updatePlaybackState(false, currentSongName, currentSongUri);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
+            // REMOVED: No longer show error toast
+            // runOnUiThread(() -> Toast.makeText(MainActivity.this, "Error playing song", Toast.LENGTH_SHORT).show());
         }
     }
 
@@ -230,6 +293,11 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
+            
+            // Update service
+            if (isServiceBound) {
+                musicService.updatePlaybackState(true, currentSongName, currentSongUri);
+            }
         }
     }
 
@@ -238,6 +306,11 @@ public class MainActivity extends Activity {
             mediaPlayer.pause();
             isPlaying = false;
             updateNotification();
+            
+            // Update service
+            if (isServiceBound) {
+                musicService.updatePlaybackState(false, currentSongName, currentSongUri);
+            }
         }
     }
 
@@ -251,6 +324,11 @@ public class MainActivity extends Activity {
         currentSongName = "";
         currentSongUri = "";
         updateNotification();
+        
+        // Update service
+        if (isServiceBound) {
+            musicService.updatePlaybackState(false, "", "");
+        }
     }
 
     // Notification methods
@@ -264,7 +342,8 @@ public class MainActivity extends Activity {
             channel.setDescription("Music playback controls");
             channel.setShowBadge(false);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            
+            channel.setSound(null, null); // No sound for notifications
+
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             manager.createNotificationChannel(channel);
         }
@@ -272,53 +351,51 @@ public class MainActivity extends Activity {
 
     @SuppressLint("UnspecifiedImmutableFlag")
     private void updateNotification() {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-        // Create media action intents
-        Intent playIntent = new Intent(this, MainActivity.class);
-        playIntent.setAction("PLAY");
-        PendingIntent playPendingIntent = PendingIntent.getActivity(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent pauseIntent = new Intent(this, MainActivity.class);
-        pauseIntent.setAction("PAUSE");
-        PendingIntent pausePendingIntent = PendingIntent.getActivity(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent stopIntent = new Intent(this, MainActivity.class);
-        stopIntent.setAction("STOP");
-        PendingIntent stopPendingIntent = PendingIntent.getActivity(this, 3, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent nextIntent = new Intent(this, MainActivity.class);
-        nextIntent.setAction("NEXT");
-        PendingIntent nextPendingIntent = PendingIntent.getActivity(this, 4, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent prevIntent = new Intent(this, MainActivity.class);
-        prevIntent.setAction("PREVIOUS");
-        PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        // Build notification
+        // Create media style notification for better appearance
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(isPlaying ? "Now Playing" : "D-TECH MUSIC")
-            .setContentText(isPlaying ? currentSongName : "No song playing")
-            .setContentIntent(pendingIntent)
+            .setSmallIcon(R.drawable.ic_music_note) // Use your own icon
+            .setContentTitle("D-TECH MUSIC")
+            .setContentText(isPlaying ? "▶ " + currentSongName : "Paused: " + currentSongName)
             .setOngoing(isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent);
+            .setSilent(true) // No notification sound
+            .setOnlyAlertOnce(true); // Prevent repeated alerts
+
+        // Create broadcast intents for media controls (NOT activity intents)
+        Intent playIntent = new Intent(this, MediaActionReceiver.class);
+        playIntent.setAction("PLAY");
+        PendingIntent playPendingIntent = PendingIntent.getBroadcast(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent pauseIntent = new Intent(this, MediaActionReceiver.class);
+        pauseIntent.setAction("PAUSE");
+        PendingIntent pausePendingIntent = PendingIntent.getBroadcast(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent nextIntent = new Intent(this, MediaActionReceiver.class);
+        nextIntent.setAction("NEXT");
+        PendingIntent nextPendingIntent = PendingIntent.getBroadcast(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent stopIntent = new Intent(this, MediaActionReceiver.class);
+        stopIntent.setAction("STOP");
+        PendingIntent stopPendingIntent = PendingIntent.getBroadcast(this, 4, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+        // Add actions based on current state
+        builder.addAction(R.drawable.ic_skip_previous, "Previous", nextPendingIntent); // Using next as previous for now
 
         if (isPlaying) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent);
+            builder.addAction(R.drawable.ic_pause, "Pause", pausePendingIntent);
         } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Play", playPendingIntent);
+            builder.addAction(R.drawable.ic_play, "Play", playPendingIntent);
         }
 
-        builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-               .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
+        builder.addAction(R.drawable.ic_skip_next, "Next", nextPendingIntent)
+               .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            builder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
+        // Use media style for better appearance on newer devices
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(1, 2) // Show play/pause and next in compact view
+            );
         }
 
         notificationManager.notify(NOTIFICATION_ID, builder.build());
@@ -335,16 +412,16 @@ public class MainActivity extends Activity {
 
     private class DownloadTask extends AsyncTask<String, Integer, Boolean> {
         private String downloadId;
-        
+
         public DownloadTask(String downloadId) {
             this.downloadId = downloadId;
         }
-        
+
         @Override
         protected Boolean doInBackground(String... params) {
             String urlString = params[0];
             String fileName = params[1];
-            
+
             try {
                 // Ensure download folder exists
                 if (downloadFolder == null || !downloadFolder.exists()) {
@@ -352,7 +429,7 @@ public class MainActivity extends Activity {
                 }
 
                 File outputFile = new File(downloadFolder, fileName);
-                
+
                 Log.d(TAG, "Downloading to: " + outputFile.getAbsolutePath());
 
                 URL url = new URL(urlString);
@@ -360,7 +437,7 @@ public class MainActivity extends Activity {
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(30000);
                 connection.setReadTimeout(30000);
-                
+
                 int fileLength = connection.getContentLength();
                 InputStream inputStream = connection.getInputStream();
                 FileOutputStream outputStream = new FileOutputStream(outputFile);
@@ -372,7 +449,7 @@ public class MainActivity extends Activity {
                 while ((bytesRead = inputStream.read(buffer)) != -1) {
                     outputStream.write(buffer, 0, bytesRead);
                     totalBytes += bytesRead;
-                    
+
                     // Publish progress
                     if (fileLength > 0) {
                         int progress = (int) ((totalBytes * 100) / fileLength);
@@ -398,7 +475,7 @@ public class MainActivity extends Activity {
                 return false;
             }
         }
-        
+
         @Override
         protected void onProgressUpdate(Integer... values) {
             // Send progress to web view
@@ -406,18 +483,19 @@ public class MainActivity extends Activity {
             String js = String.format("if(window.updateDownloadProgress) updateDownloadProgress('%s', %d);", downloadId, progress);
             mWebView.evaluateJavascript(js, null);
         }
-        
+
         @Override
         protected void onPostExecute(Boolean success) {
             if (success) {
                 runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "Downloaded: " + downloadId, Toast.LENGTH_LONG).show();
+                    // Only show download success for current downloads, not on app start
+                    Toast.makeText(MainActivity.this, "Downloaded: " + downloadId, Toast.LENGTH_SHORT).show();
                     // Refresh the web page
                     mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
                 });
             } else {
                 runOnUiThread(() -> 
-                    Toast.makeText(MainActivity.this, "Download failed: " + downloadId, Toast.LENGTH_LONG).show());
+                    Toast.makeText(MainActivity.this, "Download failed: " + downloadId, Toast.LENGTH_SHORT).show());
             }
         }
     }
@@ -451,7 +529,7 @@ public class MainActivity extends Activity {
                 }
 
                 Log.d(TAG, "Found " + files.length + " files in download folder");
-                
+
                 for (File file : files) {
                     if (file.isFile()) {
                         String name = file.getName();
@@ -537,10 +615,10 @@ public class MainActivity extends Activity {
         @android.webkit.JavascriptInterface
         public void downloadSong(final String urlString, final String fileName) {
             Log.d(TAG, "DOWNLOAD STARTED: " + fileName + " from: " + urlString);
-            
+
             // Generate a unique download ID
             final String downloadId = "dl_" + System.currentTimeMillis();
-            
+
             // Start download with progress tracking
             runOnUiThread(() -> downloadSongWithProgress(urlString, fileName, downloadId));
         }
@@ -551,20 +629,20 @@ public class MainActivity extends Activity {
             if (downloadFolder == null) {
                 return "Download folder is null";
             }
-            
+
             if (!downloadFolder.exists()) {
                 return "Download folder doesn't exist: " + downloadFolder.getAbsolutePath();
             }
-            
+
             File[] files = downloadFolder.listFiles();
             if (files == null) {
                 return "Cannot list files in download folder";
             }
-            
+
             return "Download folder OK: " + downloadFolder.getAbsolutePath() + 
                    " | Files: " + files.length;
         }
-        
+
         // Remove song from library
         @android.webkit.JavascriptInterface
         public boolean removeSong(String songUri) {
@@ -574,7 +652,7 @@ public class MainActivity extends Activity {
                 if (file.exists()) {
                     boolean deleted = file.delete();
                     Log.d(TAG, "File deletion: " + deleted + " for " + file.getAbsolutePath());
-                    
+
                     // Refresh local songs
                     runOnUiThread(() -> mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null));
                     return deleted;
@@ -595,7 +673,12 @@ public class MainActivity extends Activity {
             downloadCheckHandler.removeCallbacks(runnable);
         }
         downloadCheckRunnables.clear();
-        
+
+        if (isServiceBound) {
+            unbindService(serviceConnection);
+            isServiceBound = false;
+        }
+
         if (mediaPlayer != null) {
             if (mediaPlayer.isPlaying()) {
                 mediaPlayer.stop();
@@ -608,6 +691,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        // Don't stop playback when app goes to background
         if (isPlaying) {
             updateNotification();
         }
