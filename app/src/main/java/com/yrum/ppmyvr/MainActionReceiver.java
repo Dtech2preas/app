@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.util.Log;
 
 public class MediaActionReceiver extends BroadcastReceiver {
-    private static final String TAG = "MediaActionReceiver";
+    private static final String TAG = "MainActionReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {
