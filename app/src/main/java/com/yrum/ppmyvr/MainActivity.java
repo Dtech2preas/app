@@ -353,7 +353,7 @@ public class MainActivity extends Activity {
         int stopIcon = android.R.drawable.ic_menu_close_clear_cancel;
         int smallIcon = android.R.drawable.ic_media_play;
 
-        // Create a simple notification without MediaStyle
+        // Create media style notification for better appearance
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setContentTitle("D-TECH MUSIC")
@@ -396,6 +396,13 @@ public class MainActivity extends Activity {
 
         builder.addAction(nextIcon, "Next", nextPendingIntent)
                .addAction(stopIcon, "Stop", stopPendingIntent);
+
+        // Use media style for better appearance on newer devices
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
+            );
+        }
 
         notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
