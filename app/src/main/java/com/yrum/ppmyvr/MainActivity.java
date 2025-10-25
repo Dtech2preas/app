@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
     private AndroidBridge bridge;
     
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https://dtech.preasx24.co.za";
+    private final String mainUrl = "https://music.preasx24.co.za";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
