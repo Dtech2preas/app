@@ -11,7 +11,8 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
     <!-- Notification Permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -32,7 +33,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
+
             <!-- Media action intents -->
             <intent-filter>
                 <action android:name="PLAY" />
@@ -42,6 +43,26 @@
                 <action android:name="PREVIOUS" />
             </intent-filter>
         </activity>
+
+        <!-- Music Service for background playback -->
+        <service
+            android:name=".MusicService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Media Action Receiver for notification buttons -->
+        <receiver
+            android:name=".MediaActionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="PLAY" />
+                <action android:name="PAUSE" />
+                <action android:name="STOP" />
+                <action android:name="NEXT" />
+                <action android:name="PREVIOUS" />
+            </intent-filter>
+        </receiver>
 
         <!-- Ad Popup Activity -->
         <activity android:name="com.yrum.ppmyvr.PopupWebViewActivity" />
