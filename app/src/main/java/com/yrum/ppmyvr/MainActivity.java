@@ -18,7 +18,6 @@ import android.os.Environment;
 import android.util.Log;
 import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -97,22 +96,10 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Set up WebViewClient - let website work normally
-        mWebView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // Let the website handle all URLs normally
-                return false;
-            }
-            
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // Let the website handle all URLs normally
-                return false;
-            }
-        });
+        // Simple WebViewClient - don't interfere with website
+        mWebView.setWebViewClient(new WebViewClient());
 
-        // Download listener - ONLY intercept actual download requests
+        // Download listener - intercept file downloads and save to predetermined folder
         mWebView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(final String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -129,13 +116,13 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Load the main website WITHOUT altering it
+        // Load the main website
         mWebView.loadUrl(mainUrl);
 
         // Check and create default folder if needed
         checkAndCreateDefaultFolder();
 
-        // If no folder selected yet, prompt
+        // If no folder selected yet, prompt immediately
         if (getSavedTreeUri() == null) {
             promptUserToChooseFolder();
         }
@@ -208,9 +195,9 @@ public class MainActivity extends Activity {
 
     private void promptUserToChooseFolder() {
         try {
-            Intent intent = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 startActivityForResult(intent, REQUEST_CODE_OPEN_DIRECTORY);
             } else {
                 Toast.makeText(this, "Folder picking requires Android 5.0+", Toast.LENGTH_LONG).show();
@@ -225,23 +212,21 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         
         if (requestCode == REQUEST_CODE_OPEN_DIRECTORY) {
-            if (resultCode == Activity.RESULT_OK) {
-                if (data != null) {
-                    Uri treeUri = data.getData();
-                    if (treeUri != null) {
-                        // Take persistent permission
-                        try {
-                            getContentResolver().takePersistableUriPermission(
-                                treeUri, 
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                            );
-                        } catch (SecurityException se) {
-                            Log.w(TAG, "takePersistableUriPermission failed: " + se.getMessage());
-                        }
-                        
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                Uri treeUri = data.getData();
+                if (treeUri != null) {
+                    // Take persistent permissions
+                    try {
+                        getContentResolver().takePersistableUriPermission(
+                            treeUri, 
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        );
                         saveTreeUri(treeUri.toString());
                         Toast.makeText(this, "Download folder set successfully!", Toast.LENGTH_SHORT).show();
-                        Log.d(TAG, "Folder URI saved: " + treeUri.toString());
+                        Log.d(TAG, "Folder URI saved and permissions granted: " + treeUri.toString());
+                    } catch (SecurityException se) {
+                        Log.e(TAG, "Failed to get permissions: " + se.getMessage());
+                        Toast.makeText(this, "Failed to get folder permissions", Toast.LENGTH_LONG).show();
                     }
                 }
             } else {
@@ -311,7 +296,7 @@ public class MainActivity extends Activity {
         updateNotification();
     }
 
-    // Notification methods - Professional music player notification
+    // Notification methods
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -355,7 +340,7 @@ public class MainActivity extends Activity {
         prevIntent.setAction("PREVIOUS");
         PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 5, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        // Build professional music player notification
+        // Build notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(isPlaying ? "Now Playing" : "D-TECH MUSIC")
@@ -375,7 +360,6 @@ public class MainActivity extends Activity {
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
                .addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent);
 
-        // For Android 13+, we need to request notification permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             builder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
         }
@@ -498,130 +482,131 @@ public class MainActivity extends Activity {
             }
         }
 
-        // Public download method
+        // Download method
         @android.webkit.JavascriptInterface
         public void downloadSong(final String urlString, final String suggestedFileName) {
             AsyncTask.execute(() -> performDownload(urlString, suggestedFileName));
         }
 
-        // Fixed download logic - ensures files are saved to selected folder
+        // RELIABLE download logic that ensures files are saved to predetermined folder
         private void performDownload(final String urlString, final String suggestedFileName) {
+            String treeUriString = getSavedTreeUri();
+            
+            // Check if folder is selected
+            if (treeUriString == null || treeUriString.isEmpty()) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Please select a download folder first", Toast.LENGTH_LONG).show();
+                    promptUserToChooseFolder();
+                });
+                return;
+            }
+
+            Uri treeUri = Uri.parse(treeUriString);
+            
+            // Verify we have permissions
             try {
-                String treeUriString = getSavedTreeUri();
-                if (treeUriString == null || treeUriString.isEmpty()) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "Please select a download folder first", Toast.LENGTH_LONG).show();
-                        promptUserToChooseFolder();
-                    });
-                    return;
-                }
+                getContentResolver().takePersistableUriPermission(treeUri, 
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (SecurityException e) {
+                Log.w(TAG, "Permissions already granted or not needed");
+            }
 
-                Uri treeUri = Uri.parse(treeUriString);
-                DocumentFile pickedDir = DocumentFile.fromTreeUri(MainActivity.this, treeUri);
-                if (pickedDir == null || !pickedDir.exists()) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Selected folder is not accessible", Toast.LENGTH_LONG).show());
-                    return;
-                }
+            DocumentFile pickedDir = DocumentFile.fromTreeUri(MainActivity.this, treeUri);
+            if (pickedDir == null || !pickedDir.exists()) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Selected folder is not accessible", Toast.LENGTH_LONG).show();
+                    promptUserToChooseFolder();
+                });
+                return;
+            }
 
-                // Clean filename
-                String safeName = cleanFileName(suggestedFileName);
-                Log.d(TAG, "Attempting to save file: " + safeName + " to folder: " + treeUri);
+            // Clean and prepare filename
+            String safeName = cleanFileName(suggestedFileName);
+            Log.d(TAG, "Starting download: " + safeName + " to folder: " + treeUri);
 
+            HttpURLConnection connection = null;
+            InputStream inputStream = null;
+            OutputStream outputStream = null;
+            
+            try {
                 // Delete existing file with same name
                 DocumentFile existingFile = pickedDir.findFile(safeName);
                 if (existingFile != null) {
-                    existingFile.delete();
-                    Log.d(TAG, "Deleted existing file: " + safeName);
+                    boolean deleted = existingFile.delete();
+                    Log.d(TAG, "Existing file deleted: " + deleted);
                 }
 
                 // Create new file with proper MIME type
-                String mimeType = "audio/mpeg";
-                if (safeName.toLowerCase().endsWith(".m4a")) mimeType = "audio/mp4";
-                else if (safeName.toLowerCase().endsWith(".wav")) mimeType = "audio/wav";
-                else if (safeName.toLowerCase().endsWith(".ogg")) mimeType = "audio/ogg";
-
+                String mimeType = getMimeTypeFromFileName(safeName);
                 DocumentFile newFile = pickedDir.createFile(mimeType, safeName);
                 
                 if (newFile == null) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "Failed to create file in folder", Toast.LENGTH_LONG).show());
-                    return;
+                    throw new Exception("Failed to create file in selected folder");
                 }
 
-                Log.d(TAG, "File created successfully: " + newFile.getUri());
+                Log.d(TAG, "File created: " + newFile.getUri());
 
                 // Download the file
-                HttpURLConnection connection = null;
-                InputStream inputStream = null;
-                OutputStream outputStream = null;
+                URL url = new URL(urlString);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(30000);
+                connection.setReadTimeout(30000);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
                 
-                try {
-                    URL url = new URL(urlString);
-                    connection = (HttpURLConnection) url.openConnection();
-                    connection.setRequestMethod("GET");
-                    connection.setConnectTimeout(30000);
-                    connection.setReadTimeout(30000);
-                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android)");
-                    
-                    connection.connect();
+                connection.connect();
 
-                    int responseCode = connection.getResponseCode();
-                    if (responseCode != HttpURLConnection.HTTP_OK) {
-                        Log.e(TAG, "Server returned HTTP " + responseCode + " for " + urlString);
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Download failed: HTTP " + responseCode, Toast.LENGTH_LONG).show());
-                        return;
-                    }
+                int responseCode = connection.getResponseCode();
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw new Exception("HTTP " + responseCode);
+                }
 
-                    inputStream = connection.getInputStream();
-                    outputStream = getContentResolver().openOutputStream(newFile.getUri());
-                    
-                    if (outputStream == null) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "Cannot write to selected folder", Toast.LENGTH_LONG).show());
-                        return;
-                    }
+                inputStream = connection.getInputStream();
+                outputStream = getContentResolver().openOutputStream(newFile.getUri());
+                
+                if (outputStream == null) {
+                    throw new Exception("Cannot open output stream to folder");
+                }
 
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    long totalBytes = 0;
-                    long contentLength = connection.getContentLength();
+                // Copy data
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                long totalBytes = 0;
+                long contentLength = connection.getContentLength();
 
-                    while ((bytesRead = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, bytesRead);
-                        totalBytes += bytesRead;
-                        
-                        // Log progress for large files
-                        if (contentLength > 0 && totalBytes % (1024 * 1024) == 0) {
-                            int progress = (int) ((totalBytes * 100) / contentLength);
-                            Log.d(TAG, "Download progress: " + progress + "%");
-                        }
-                    }
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+                }
 
-                    outputStream.flush();
-                    Log.d(TAG, "Download completed successfully: " + safeName + " (" + totalBytes + " bytes)");
+                outputStream.flush();
+                Log.d(TAG, "Download completed: " + safeName + " (" + totalBytes + " bytes)");
 
+                // Verify file was created
+                DocumentFile verifyFile = pickedDir.findFile(safeName);
+                if (verifyFile != null && verifyFile.exists()) {
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, "Download saved: " + safeName, Toast.LENGTH_LONG).show();
                     });
-
-                } finally {
-                    // Clean up resources
-                    try {
-                        if (inputStream != null) inputStream.close();
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error closing input stream: " + e.getMessage());
-                    }
-                    try {
-                        if (outputStream != null) outputStream.close();
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error closing output stream: " + e.getMessage());
-                    }
-                    if (connection != null) connection.disconnect();
+                    Log.d(TAG, "File verified in folder: " + verifyFile.getUri());
+                } else {
+                    throw new Exception("File not found in folder after download");
                 }
-                
+
             } catch (final Exception e) {
                 Log.e(TAG, "Download failed: " + e.getMessage(), e);
                 runOnUiThread(() -> {
                     Toast.makeText(MainActivity.this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 });
+            } finally {
+                // Clean up
+                try {
+                    if (inputStream != null) inputStream.close();
+                    if (outputStream != null) outputStream.close();
+                    if (connection != null) connection.disconnect();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error closing resources: " + e.getMessage());
+                }
             }
         }
 
@@ -630,19 +615,29 @@ public class MainActivity extends Activity {
                 return "download_" + System.currentTimeMillis() + ".mp3";
             }
             
-            // Remove invalid characters for filenames
+            // Remove invalid characters
             String cleanName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
-            
-            // Replace multiple underscores with single one
             cleanName = cleanName.replaceAll("_{2,}", "_");
-            
-            // Trim and ensure not empty
             cleanName = cleanName.trim();
+            
             if (cleanName.isEmpty()) {
                 cleanName = "download_" + System.currentTimeMillis() + ".mp3";
             }
             
+            // Ensure extension
+            if (!cleanName.contains(".")) {
+                cleanName += ".mp3";
+            }
+            
             return cleanName;
+        }
+
+        private String getMimeTypeFromFileName(String fileName) {
+            if (fileName.toLowerCase().endsWith(".mp3")) return "audio/mpeg";
+            if (fileName.toLowerCase().endsWith(".m4a")) return "audio/mp4";
+            if (fileName.toLowerCase().endsWith(".wav")) return "audio/wav";
+            if (fileName.toLowerCase().endsWith(".ogg")) return "audio/ogg";
+            return "audio/mpeg"; // default
         }
     }
 
@@ -661,7 +656,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Keep music playing and notification alive when app goes to background
         if (isPlaying) {
             updateNotification();
         }
@@ -670,7 +664,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Update notification when app comes to foreground
         updateNotification();
     }
 
@@ -679,7 +672,6 @@ public class MainActivity extends Activity {
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
-            // Don't stop music when going back - just minimize the app
             moveTaskToBack(true);
         }
     }
