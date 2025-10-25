@@ -353,11 +353,11 @@ public class MainActivity extends Activity {
         int stopIcon = android.R.drawable.ic_menu_close_clear_cancel;
         int smallIcon = android.R.drawable.ic_media_play;
 
-        // Create notification without MediaStyle
+        // Create simple notification without any extra dependencies
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(smallIcon)
             .setContentTitle("D-TECH MUSIC")
-            .setContentText(isPlaying ? "▶ " + (currentSongName.length() > 30 ? currentSongName.substring(0, 30) + "..." : currentSongName) : "Paused")
+            .setContentText(isPlaying ? "▶ " + currentSongName : "Paused")
             .setOngoing(isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
