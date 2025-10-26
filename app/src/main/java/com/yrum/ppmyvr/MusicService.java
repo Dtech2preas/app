@@ -4,11 +4,11 @@ import android.app.Service;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.media.MediaMetadata;
-import android.media.session.MediaSession;
-import android.media.session.PlaybackState;
 import android.os.Binder;
 import android.os.IBinder;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 
 public class MusicService extends Service {
@@ -20,7 +20,7 @@ public class MusicService extends Service {
     private String currentSongUri = "";
     
     // Media session for Spotify-like notifications
-    private MediaSession mediaSession;
+    private MediaSessionCompat mediaSession;
     
     public class LocalBinder extends Binder {
         MusicService getService() {
@@ -46,24 +46,24 @@ public class MusicService extends Service {
     }
 
     private void initializeMediaSession() {
-        mediaSession = new MediaSession(this, "D-TECH MUSIC");
-        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS | 
-                            MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession = new MediaSessionCompat(this, "D-TECH MUSIC");
+        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | 
+                            MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
         
         // Set playback state
-        PlaybackState.Builder stateBuilder = new PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY | 
-                          PlaybackState.ACTION_PAUSE |
-                          PlaybackState.ACTION_PLAY_PAUSE |
-                          PlaybackState.ACTION_SKIP_TO_NEXT |
-                          PlaybackState.ACTION_SKIP_TO_PREVIOUS |
-                          PlaybackState.ACTION_STOP);
+        PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
+                .setActions(PlaybackStateCompat.ACTION_PLAY | 
+                          PlaybackStateCompat.ACTION_PAUSE |
+                          PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                          PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                          PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                          PlaybackStateCompat.ACTION_STOP);
         
         mediaSession.setPlaybackState(stateBuilder.build());
         mediaSession.setActive(true);
         
         // Set media session callback
-        mediaSession.setCallback(new MediaSession.Callback() {
+        mediaSession.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
                 super.onPlay();
@@ -108,29 +108,29 @@ public class MusicService extends Service {
         
         // Update media session state
         if (mediaSession != null) {
-            int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+            int state = playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
             
-            PlaybackState.Builder stateBuilder = new PlaybackState.Builder()
-                    .setActions(PlaybackState.ACTION_PLAY | 
-                              PlaybackState.ACTION_PAUSE |
-                              PlaybackState.ACTION_PLAY_PAUSE |
-                              PlaybackState.ACTION_SKIP_TO_NEXT |
-                              PlaybackState.ACTION_SKIP_TO_PREVIOUS |
-                              PlaybackState.ACTION_STOP)
-                    .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f);
+            PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
+                    .setActions(PlaybackStateCompat.ACTION_PLAY | 
+                              PlaybackStateCompat.ACTION_PAUSE |
+                              PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                              PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                              PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                              PlaybackStateCompat.ACTION_STOP)
+                    .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f);
             
             mediaSession.setPlaybackState(stateBuilder.build());
             
             // Update metadata
-            MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder();
+            MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
             if (songName != null && !songName.isEmpty()) {
-                metadataBuilder.putString(MediaMetadata.METADATA_KEY_TITLE, songName);
-                metadataBuilder.putString(MediaMetadata.METADATA_KEY_ARTIST, "D-TECH MUSIC");
-                metadataBuilder.putString(MediaMetadata.METADATA_KEY_ALBUM, "D-TECH MUSIC");
+                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE, songName);
+                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
+                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
                 
                 // Create a simple bitmap (you can replace this with actual album art)
                 Bitmap icon = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
-                metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, icon);
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, icon);
             }
             
             mediaSession.setMetadata(metadataBuilder.build());
@@ -139,7 +139,7 @@ public class MusicService extends Service {
         Log.d(TAG, "Playback state updated - Playing: " + playing + ", Song: " + songName);
     }
 
-    public MediaSession getMediaSession() {
+    public MediaSessionCompat getMediaSession() {
         return mediaSession;
     }
 
