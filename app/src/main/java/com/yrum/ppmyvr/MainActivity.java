@@ -586,7 +586,8 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             channel.setSound(null, null); // No sound for notifications
 
-            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_MANAGER);
+            // FIXED: Use NOTIFICATION_SERVICE instead of NOTIFICATION_MANAGER
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             manager.createNotificationChannel(channel);
         }
     }
