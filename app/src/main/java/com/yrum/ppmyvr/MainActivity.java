@@ -44,13 +44,12 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements MusicService.MediaControllerCallback {
 
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "spotifydl_prefs";
@@ -100,23 +99,7 @@ public class MainActivity extends Activity {
             String action = intent.getAction();
             Log.d(TAG, "Media action received: " + action);
             if (action != null) {
-                switch (action) {
-                    case "PLAY":
-                        playCurrentSong();
-                        break;
-                    case "PAUSE":
-                        pauseSong();
-                        break;
-                    case "STOP":
-                        stopSong();
-                        break;
-                    case "NEXT":
-                        mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
-                        break;
-                    case "PREVIOUS":
-                        mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
-                        break;
-                }
+                handleMediaAction(action);
             }
         }
     };
@@ -128,6 +111,9 @@ public class MainActivity extends Activity {
             MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
             musicService = binder.getService();
             isServiceBound = true;
+
+            // Set the callback for media control
+            musicService.setMediaControllerCallback(MainActivity.this);
 
             // Sync current state with service
             if (isPlaying) {
@@ -204,9 +190,61 @@ public class MainActivity extends Activity {
         loadAppropriateUrl();
     }
 
+    // Implement MediaControllerCallback methods
+    @Override
+    public void onPlay() {
+        Log.d(TAG, "MediaControllerCallback: Play");
+        playCurrentSong();
+    }
+
+    @Override
+    public void onPause() {
+        Log.d(TAG, "MediaControllerCallback: Pause");
+        pauseSong();
+    }
+
+    @Override
+    public void onStop() {
+        Log.d(TAG, "MediaControllerCallback: Stop");
+        stopSong();
+    }
+
+    @Override
+    public void onNext() {
+        Log.d(TAG, "MediaControllerCallback: Next");
+        mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+    }
+
+    @Override
+    public void onPrevious() {
+        Log.d(TAG, "MediaControllerCallback: Previous");
+        mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
+    }
+
+    private void handleMediaAction(String action) {
+        Log.d(TAG, "Handling media action: " + action);
+        switch (action) {
+            case "PLAY":
+                playCurrentSong();
+                break;
+            case "PAUSE":
+                pauseSong();
+                break;
+            case "STOP":
+                stopSong();
+                break;
+            case "NEXT":
+                mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+                break;
+            case "PREVIOUS":
+                mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
+                break;
+        }
+    }
+
     private void initializeNetworkMonitoring() {
         connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             networkCallback = new ConnectivityManager.NetworkCallback() {
                 @Override
@@ -256,7 +294,7 @@ public class MainActivity extends Activity {
     private void updateConnectionStatus() {
         boolean previousStatus = isOnline;
         isOnline = isNetworkAvailable();
-        
+
         if (previousStatus != isOnline) {
             runOnUiThread(() -> {
                 if (isOnline) {
@@ -273,11 +311,11 @@ public class MainActivity extends Activity {
         if (connectivityManager == null) {
             connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         }
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Network network = connectivityManager.getActiveNetwork();
             if (network == null) return false;
-            
+
             NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
             return capabilities != null && 
                    (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
@@ -304,7 +342,7 @@ public class MainActivity extends Activity {
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
             super.onReceivedError(view, errorCode, description, failingUrl);
             Log.e(TAG, "WebView error: " + description + " Code: " + errorCode);
-            
+
             // If online but failed to load, try offline
             if (isOnline) {
                 runOnUiThread(() -> {
@@ -321,19 +359,19 @@ public class MainActivity extends Activity {
             if (url.startsWith("file:///android_asset/") || url.startsWith("javascript:")) {
                 return false;
             }
-            
+
             // For external URLs when offline, show message
             if (!isOnline && !url.startsWith("file://")) {
                 Toast.makeText(MainActivity.this, "Internet required for external links", Toast.LENGTH_SHORT).show();
                 return true;
             }
-            
+
             // For main domain URLs, load in WebView
             if (url.contains("music.preasx24.co.za")) {
                 view.loadUrl(url);
                 return true;
             }
-            
+
             // For other external URLs, open in browser if online
             if (isOnline) {
                 try {
@@ -344,7 +382,7 @@ public class MainActivity extends Activity {
                 }
                 return true;
             }
-            
+
             return false;
         }
 
@@ -352,7 +390,7 @@ public class MainActivity extends Activity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             Log.d(TAG, "Page loaded: " + url);
-            
+
             // Inject JavaScript to handle network state in web page
             injectNetworkStateScript();
         }
@@ -448,23 +486,7 @@ public class MainActivity extends Activity {
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
             Log.d(TAG, "Handle intent action: " + action);
-            switch (action) {
-                case "PLAY":
-                    playCurrentSong();
-                    break;
-                case "PAUSE":
-                    pauseSong();
-                    break;
-                case "STOP":
-                    stopSong();
-                    break;
-                case "NEXT":
-                    mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
-                    break;
-                case "PREVIOUS":
-                    mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
-                    break;
-            }
+            handleMediaAction(action);
         }
     }
 
@@ -515,6 +537,9 @@ public class MainActivity extends Activity {
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
             }
+        } else if (!isPrepared && currentSongUri != null && !currentSongUri.isEmpty()) {
+            // If not prepared but we have a song URI, try to play it
+            playSong(currentSongUri, currentSongName);
         }
     }
 
@@ -561,7 +586,7 @@ public class MainActivity extends Activity {
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             channel.setSound(null, null); // No sound for notifications
 
-            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_MANAGER);
             manager.createNotificationChannel(channel);
         }
     }
@@ -573,11 +598,11 @@ public class MainActivity extends Activity {
         }
 
         // Create album art bitmap
-        Bitmap albumArt = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
+        Bitmap albumArt = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
 
         // Create Spotify-like media notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setLargeIcon(albumArt)
             .setContentTitle(currentSongName.isEmpty() ? "D-TECH MUSIC" : currentSongName)
             .setContentText("D-TECH MUSIC")
