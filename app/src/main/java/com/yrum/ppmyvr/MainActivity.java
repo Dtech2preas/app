@@ -17,6 +17,10 @@ import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -74,6 +78,7 @@ public class MainActivity extends Activity {
 
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://music.preasx24.co.za";
+    private final String localUrl = "file:///android_asset/index.html";
 
     // Our predetermined download folder
     private File downloadFolder;
@@ -82,6 +87,11 @@ public class MainActivity extends Activity {
 
     // Track if this is first app launch to show folder notification only once
     private boolean isFirstLaunch = true;
+
+    // Network state tracking
+    private boolean isOnline = true;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     // Broadcast receiver for media actions from MediaSession
     private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
@@ -118,7 +128,7 @@ public class MainActivity extends Activity {
             MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
             musicService = binder.getService();
             isServiceBound = true;
-            
+
             // Sync current state with service
             if (isPlaying) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -139,6 +149,9 @@ public class MainActivity extends Activity {
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Initialize network monitoring
+        initializeNetworkMonitoring();
 
         // Register broadcast receiver for media actions
         IntentFilter filter = new IntentFilter();
@@ -184,11 +197,179 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Simple WebViewClient - don't interfere with website
-        mWebView.setWebViewClient(new WebViewClient());
+        // Custom WebViewClient to handle network state changes
+        mWebView.setWebViewClient(new CustomWebViewClient());
 
-        // Load the main website
-        mWebView.loadUrl(mainUrl);
+        // Load initial URL based on network availability
+        loadAppropriateUrl();
+    }
+
+    private void initializeNetworkMonitoring() {
+        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    super.onAvailable(network);
+                    Log.d(TAG, "Network available");
+                    if (!isOnline) {
+                        isOnline = true;
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "Internet connected - loading online content", Toast.LENGTH_SHORT).show();
+                            loadAppropriateUrl();
+                        });
+                    }
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    super.onLost(network);
+                    Log.d(TAG, "Network lost");
+                    if (isOnline) {
+                        isOnline = false;
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "No internet - loading offline content", Toast.LENGTH_LONG).show();
+                            loadAppropriateUrl();
+                        });
+                    }
+                }
+            };
+
+            // Register the network callback
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } else {
+            // For older devices, use BroadcastReceiver
+            IntentFilter connectivityFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+            registerReceiver(new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    updateConnectionStatus();
+                }
+            }, connectivityFilter);
+        }
+
+        // Initial network status check
+        updateConnectionStatus();
+    }
+
+    private void updateConnectionStatus() {
+        boolean previousStatus = isOnline;
+        isOnline = isNetworkAvailable();
+        
+        if (previousStatus != isOnline) {
+            runOnUiThread(() -> {
+                if (isOnline) {
+                    Toast.makeText(MainActivity.this, "Internet connected - loading online content", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "No internet - loading offline content", Toast.LENGTH_LONG).show();
+                }
+                loadAppropriateUrl();
+            });
+        }
+    }
+
+    private boolean isNetworkAvailable() {
+        if (connectivityManager == null) {
+            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Network network = connectivityManager.getActiveNetwork();
+            if (network == null) return false;
+            
+            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+            return capabilities != null && 
+                   (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
+        } else {
+            NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+            return networkInfo != null && networkInfo.isConnected();
+        }
+    }
+
+    private void loadAppropriateUrl() {
+        if (isOnline) {
+            Log.d(TAG, "Loading online URL: " + mainUrl);
+            mWebView.loadUrl(mainUrl);
+        } else {
+            Log.d(TAG, "Loading offline URL: " + localUrl);
+            mWebView.loadUrl(localUrl);
+        }
+    }
+
+    private class CustomWebViewClient extends WebViewClient {
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            super.onReceivedError(view, errorCode, description, failingUrl);
+            Log.e(TAG, "WebView error: " + description + " Code: " + errorCode);
+            
+            // If online but failed to load, try offline
+            if (isOnline) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Failed to load online content, switching to offline", Toast.LENGTH_LONG).show();
+                    isOnline = false;
+                    loadAppropriateUrl();
+                });
+            }
+        }
+
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            // Allow local file URLs when offline
+            if (url.startsWith("file:///android_asset/") || url.startsWith("javascript:")) {
+                return false;
+            }
+            
+            // For external URLs when offline, show message
+            if (!isOnline && !url.startsWith("file://")) {
+                Toast.makeText(MainActivity.this, "Internet required for external links", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+            
+            // For main domain URLs, load in WebView
+            if (url.contains("music.preasx24.co.za")) {
+                view.loadUrl(url);
+                return true;
+            }
+            
+            // For other external URLs, open in browser if online
+            if (isOnline) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to open external URL: " + e.getMessage());
+                }
+                return true;
+            }
+            
+            return false;
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            Log.d(TAG, "Page loaded: " + url);
+            
+            // Inject JavaScript to handle network state in web page
+            injectNetworkStateScript();
+        }
+    }
+
+    private void injectNetworkStateScript() {
+        String networkScript = String.format(
+            "javascript:(function() {" +
+            "window.isOnline = %s;" +
+            "if (typeof onNetworkStateChange === 'function') {" +
+            "   onNetworkStateChange(%s);" +
+            "}" +
+            "})()", 
+            isOnline ? "true" : "false", 
+            isOnline ? "true" : "false"
+        );
+        mWebView.evaluateJavascript(networkScript, null);
     }
 
     private void initializeDownloadFolder() {
@@ -218,7 +399,7 @@ public class MainActivity extends Activity {
 
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
-        
+
         // Only show folder location on first launch
         if (isFirstLaunch) {
             Toast.makeText(this, "Downloads saved to: D-TECH MUSIC folder", Toast.LENGTH_SHORT).show();
@@ -231,7 +412,7 @@ public class MainActivity extends Activity {
         mediaPlayer.setOnCompletionListener(mp -> {
             isPlaying = false;
             runOnUiThread(() -> mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null));
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -244,7 +425,7 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -314,7 +495,7 @@ public class MainActivity extends Activity {
             mediaPlayer.setDataSource(this, Uri.parse(songUri));
             mediaPlayer.prepareAsync();
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -329,7 +510,7 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -342,7 +523,7 @@ public class MainActivity extends Activity {
             mediaPlayer.pause();
             isPlaying = false;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -360,7 +541,7 @@ public class MainActivity extends Activity {
         currentSongName = "";
         currentSongUri = "";
         updateNotification();
-        
+
         // Update service
         if (isServiceBound) {
             musicService.updatePlaybackState(false, "", "");
@@ -415,7 +596,7 @@ public class MainActivity extends Activity {
         // Add media actions
         builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
             createMediaActionIntent("PREVIOUS"));
-        
+
         if (isPlaying) {
             builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
                 createMediaActionIntent("PAUSE"));
@@ -423,7 +604,7 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", 
                 createMediaActionIntent("PLAY"));
         }
-        
+
         builder.addAction(android.R.drawable.ic_media_next, "Next", 
             createMediaActionIntent("NEXT"));
 
@@ -681,6 +862,20 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> downloadSongWithProgress(urlString, fileName, downloadId));
         }
 
+        // Network state methods
+        @android.webkit.JavascriptInterface
+        public boolean isOnline() {
+            return isOnline;
+        }
+
+        @android.webkit.JavascriptInterface
+        public void checkNetworkAndReload() {
+            runOnUiThread(() -> {
+                updateConnectionStatus();
+                loadAppropriateUrl();
+            });
+        }
+
         // Test method to check download folder
         @android.webkit.JavascriptInterface
         public String testDownloadFolder() {
@@ -737,6 +932,11 @@ public class MainActivity extends Activity {
             unregisterReceiver(mediaActionReceiver);
         }
 
+        // Unregister network callback
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && networkCallback != null) {
+            connectivityManager.unregisterNetworkCallback(networkCallback);
+        }
+
         if (isServiceBound) {
             unbindService(serviceConnection);
             isServiceBound = false;
@@ -764,6 +964,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         updateNotification();
+        // Check network status on resume
+        updateConnectionStatus();
     }
 
     @Override
