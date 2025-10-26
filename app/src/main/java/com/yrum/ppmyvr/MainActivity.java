@@ -586,7 +586,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             channel.setSound(null, null); // No sound for notifications
 
-            // FIXED: Use NOTIFICATION_SERVICE instead of NOTIFICATION_MANAGER
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             manager.createNotificationChannel(channel);
         }
@@ -978,20 +977,20 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        updateNotification();
+        // Check network status on resume
+        updateConnectionStatus();
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         // Don't stop playback when app goes to background
         if (isPlaying) {
             updateNotification();
         }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateNotification();
-        // Check network status on resume
-        updateConnectionStatus();
     }
 
     @Override
