@@ -1,8 +1,6 @@
 package com.yrum.ppmyvr;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
@@ -10,36 +8,28 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
 import android.os.Binder;
-import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
-
-import java.util.Random;
+import androidx.media.session.MediaButtonReceiver;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 public class MusicService extends Service {
-
     private static final String TAG = "MusicService";
-    private static final String CHANNEL_ID = "dtech_music_channel";
     private final IBinder binder = new LocalBinder();
 
-    private MediaPlayer mediaPlayer;
-    private MediaSessionCompat mediaSession;
-
     private boolean isPlaying = false;
-    private boolean isShuffle = false;
-    private int repeatMode = 0; // 0 = off, 1 = all, 2 = one
-
     private String currentSongName = "";
     private String currentSongUri = "";
 
-    private final Handler progressHandler = new Handler();
-    private final Random random = new Random();
+    private boolean isShuffle = false;
+    private int repeatMode = 0; // 0 = off, 1 = all, 2 = one
+
+    private MediaSessionCompat mediaSession;
+    private MediaPlayer player;
 
     public class LocalBinder extends Binder {
         MusicService getService() {
@@ -51,8 +41,21 @@ public class MusicService extends Service {
     public void onCreate() {
         super.onCreate();
         initializeMediaSession();
-        createNotificationChannel();
-        Log.d(TAG, "MusicService created");
+        initializePlayer();
+    }
+
+    private void initializePlayer() {
+        player = new MediaPlayer();
+        player.setOnCompletionListener(mp -> {
+            Log.d(TAG, "Song completed");
+            if (repeatMode == 2) {
+                startPlayback(); // repeat same song
+            } else if (repeatMode == 1) {
+                sendBroadcast(new Intent("NEXT")); // repeat all
+            } else {
+                updatePlaybackState(false);
+            }
+        });
     }
 
     @Override
@@ -62,214 +65,202 @@ public class MusicService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Ensure media session stays active
-        mediaSession.setActive(true);
-        startForegroundWithNotification();
+        if (intent != null) {
+            MediaButtonReceiver.handleIntent(mediaSession, intent);
+        }
         return START_STICKY;
     }
 
     private void initializeMediaSession() {
         mediaSession = new MediaSessionCompat(this, "D-TECH MUSIC");
         mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
-                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+                              MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setActive(true);
 
         mediaSession.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
-                super.onPlay();
-                Log.d(TAG, "MediaSession: Play pressed");
-                play();
+                startPlayback();
             }
 
             @Override
             public void onPause() {
-                super.onPause();
-                Log.d(TAG, "MediaSession: Pause pressed");
-                pause();
-            }
-
-            @Override
-            public void onSkipToNext() {
-                super.onSkipToNext();
-                Log.d(TAG, "MediaSession: Next pressed");
-                skipToNext();
-            }
-
-            @Override
-            public void onSkipToPrevious() {
-                super.onSkipToPrevious();
-                Log.d(TAG, "MediaSession: Previous pressed");
-                skipToPrevious();
+                pausePlayback();
             }
 
             @Override
             public void onStop() {
-                super.onStop();
-                stop();
+                stopPlayback();
+            }
+
+            @Override
+            public void onSkipToNext() {
+                sendBroadcast(new Intent("NEXT"));
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                sendBroadcast(new Intent("PREVIOUS"));
             }
 
             @Override
             public void onCustomAction(String action, android.os.Bundle extras) {
-                super.onCustomAction(action, extras);
-                if (action.equals("SHUFFLE")) toggleShuffle();
-                if (action.equals("REPEAT")) toggleRepeatMode();
+                switch (action) {
+                    case "SHUFFLE":
+                        isShuffle = !isShuffle;
+                        Log.d(TAG, "Shuffle toggled: " + isShuffle);
+                        break;
+                    case "REPEAT":
+                        repeatMode = (repeatMode + 1) % 3;
+                        Log.d(TAG, "Repeat mode: " + repeatMode);
+                        break;
+                }
             }
         });
+
+        updatePlaybackState(false);
     }
 
-    private void play() {
-        if (mediaPlayer == null) return;
-        mediaPlayer.start();
-        isPlaying = true;
-        updatePlaybackState();
-        startForegroundWithNotification();
+    // 🔊 Start playback
+    public void startPlayback() {
+        try {
+            if (currentSongUri == null || currentSongUri.isEmpty()) {
+                Log.w(TAG, "No song set to play.");
+                return;
+            }
+
+            if (player == null) initializePlayer();
+
+            if (player.isPlaying()) player.stop();
+            player.reset();
+
+            player.setDataSource(currentSongUri);
+            player.prepare();
+            player.start();
+
+            isPlaying = true;
+            updateMetadata();
+            updatePlaybackState(true);
+            startForegroundNotification();
+
+            Log.d(TAG, "Playback started: " + currentSongName);
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting playback", e);
+        }
     }
 
-    private void pause() {
-        if (mediaPlayer == null) return;
-        mediaPlayer.pause();
-        isPlaying = false;
-        updatePlaybackState();
-        startForegroundWithNotification();
-    }
-
-    private void stop() {
-        if (mediaPlayer != null) {
-            mediaPlayer.stop();
+    // ⏸ Pause playback
+    public void pausePlayback() {
+        if (player != null && player.isPlaying()) {
+            player.pause();
             isPlaying = false;
-            updatePlaybackState();
+            updatePlaybackState(false);
+            stopForeground(false);
+        }
+    }
+
+    // 🛑 Stop playback completely
+    public void stopPlayback() {
+        if (player != null) {
+            player.stop();
+            player.reset();
+            isPlaying = false;
+            updatePlaybackState(false);
             stopForeground(true);
         }
     }
 
-    private void skipToNext() {
-        // Add your actual song skip logic here (can connect to playlist)
-        Log.d(TAG, "Next song triggered");
-    }
+    private void updateMetadata() {
+        MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
+        metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE,
+                currentSongName != null ? currentSongName : "D-TECH Music");
+        metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
+        metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
 
-    private void skipToPrevious() {
-        Log.d(TAG, "Previous song triggered");
-    }
+        Bitmap logo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
+        metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, logo);
 
-    private void toggleShuffle() {
-        isShuffle = !isShuffle;
-        Log.d(TAG, "Shuffle: " + isShuffle);
-        startForegroundWithNotification();
-    }
-
-    private void toggleRepeatMode() {
-        repeatMode = (repeatMode + 1) % 3;
-        String mode = repeatMode == 0 ? "Off" : repeatMode == 1 ? "All" : "One";
-        Log.d(TAG, "Repeat Mode: " + mode);
-        startForegroundWithNotification();
+        mediaSession.setMetadata(metadataBuilder.build());
     }
 
     private void updatePlaybackState() {
         int state = isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
-        long position = (mediaPlayer != null) ? mediaPlayer.getCurrentPosition() : 0;
-        long duration = (mediaPlayer != null) ? mediaPlayer.getDuration() : 0;
 
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-                .setActions(
-                        PlaybackStateCompat.ACTION_PLAY |
-                                PlaybackStateCompat.ACTION_PAUSE |
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                PlaybackStateCompat.ACTION_STOP
-                )
-                .setState(state, position, 1.0f);
-
-        if (duration > 0)
-            stateBuilder.setBufferedPosition(duration);
+                .setActions(PlaybackStateCompat.ACTION_PLAY |
+                        PlaybackStateCompat.ACTION_PAUSE |
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                        PlaybackStateCompat.ACTION_STOP |
+                        PlaybackStateCompat.ACTION_SEEK_TO)
+                .setState(state,
+                        player != null ? player.getCurrentPosition() : 0,
+                        1.0f);
 
         mediaSession.setPlaybackState(stateBuilder.build());
     }
 
-    public void updateMetadata(String songName) {
+    public void updatePlaybackState(boolean playing, String songName, String songUri) {
+        this.isPlaying = playing;
         this.currentSongName = songName;
-
-        Bitmap logo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
-
-        MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, songName)
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC")
-                .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, logo);
-
-        mediaSession.setMetadata(metadataBuilder.build());
-        startForegroundWithNotification();
+        this.currentSongUri = songUri;
+        if (playing) startPlayback();
+        else pausePlayback();
     }
 
-    private void startForegroundWithNotification() {
-        Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
-                PendingIntent.FLAG_IMMUTABLE);
+    public MediaSessionCompat getMediaSession() {
+        return mediaSession;
+    }
 
-        NotificationCompat.Action shuffleAction = new NotificationCompat.Action(
-                android.R.drawable.ic_menu_rotate, "Shuffle",
-                MediaButtonReceiver.buildMediaButtonPendingIntent(this, "SHUFFLE")
-        );
-
-        NotificationCompat.Action repeatAction = new NotificationCompat.Action(
-                android.R.drawable.ic_menu_revert, "Repeat",
-                MediaButtonReceiver.buildMediaButtonPendingIntent(this, "REPEAT")
-        );
-
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(currentSongName.isEmpty() ? "D-TECH MUSIC" : currentSongName)
-                .setContentText(isShuffle ? "Shuffle On" : "Shuffle Off")
+    private void startForegroundNotification() {
+        Notification notification = new NotificationCompat.Builder(this, "music_channel")
+                .setContentTitle(currentSongName != null ? currentSongName : "D-TECH Music")
+                .setContentText("Now playing")
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setLargeIcon(BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher))
-                .setSmallIcon(R.drawable.ic_media_play)
-                .setContentIntent(pendingIntent)
+                .setOngoing(isPlaying)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
                         .setMediaSession(mediaSession.getSessionToken())
                         .setShowActionsInCompactView(0, 1, 2))
-                .addAction(android.R.drawable.ic_media_previous, "Previous",
+                .addAction(new NotificationCompat.Action(
+                        android.R.drawable.ic_media_previous, "Prev",
                         MediaButtonReceiver.buildMediaButtonPendingIntent(this,
-                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS))
-                .addAction(isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)))
+                .addAction(new NotificationCompat.Action(
+                        isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                         isPlaying ? "Pause" : "Play",
                         MediaButtonReceiver.buildMediaButtonPendingIntent(this,
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE))
-                .addAction(android.R.drawable.ic_media_next, "Next",
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE)))
+                .addAction(new NotificationCompat.Action(
+                        android.R.drawable.ic_media_next, "Next",
                         MediaButtonReceiver.buildMediaButtonPendingIntent(this,
-                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT))
-                .addAction(shuffleAction)
-                .addAction(repeatAction)
-                .setOnlyAlertOnce(true)
-                .setOngoing(isPlaying)
-                .setProgress(100,
-                        mediaPlayer != null && mediaPlayer.getDuration() > 0
-                                ? (int) ((float) mediaPlayer.getCurrentPosition() / mediaPlayer.getDuration() * 100)
-                                : 0,
-                        false)
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT)))
                 .build();
 
         startForeground(1, notification);
     }
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, "D-TECH MUSIC PLAYER",
-                    NotificationManager.IMPORTANCE_LOW);
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
-        }
+    public boolean isPlaying() {
+        return isPlaying;
+    }
+
+    public String getCurrentSongName() {
+        return currentSongName;
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (player != null) {
+            player.release();
+            player = null;
+        }
         if (mediaSession != null) {
             mediaSession.release();
         }
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-        }
-        progressHandler.removeCallbacksAndMessages(null);
+        stopForeground(true);
         Log.d(TAG, "MusicService destroyed");
     }
 }
