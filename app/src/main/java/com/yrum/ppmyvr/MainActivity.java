@@ -985,15 +985,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        // Don't stop playback when app goes to background
-        if (isPlaying) {
-            updateNotification();
-        }
-    }
-
-    @Override
     public void onBackPressed() {
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
