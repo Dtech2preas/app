@@ -22,6 +22,17 @@ public class MusicService extends Service {
     // Media session for notifications
     private MediaSessionCompat mediaSession;
 
+    // Callback interface to communicate with MainActivity
+    public interface MediaControllerCallback {
+        void onPlay();
+        void onPause();
+        void onStop();
+        void onNext();
+        void onPrevious();
+    }
+    
+    private MediaControllerCallback mediaControllerCallback;
+
     public class LocalBinder extends Binder {
         MusicService getService() {
             return MusicService.this;
@@ -41,6 +52,10 @@ public class MusicService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Handle media actions from notification when service is started
+        if (intent != null && intent.getAction() != null) {
+            handleMediaAction(intent.getAction());
+        }
         return START_STICKY;
     }
 
@@ -65,35 +80,55 @@ public class MusicService extends Service {
             public void onPlay() {
                 super.onPlay();
                 Log.d(TAG, "MediaSession: Play");
-                sendBroadcast(new Intent("PLAY"));
+                if (mediaControllerCallback != null) {
+                    mediaControllerCallback.onPlay();
+                } else {
+                    sendBroadcast(new Intent("PLAY"));
+                }
             }
 
             @Override
             public void onPause() {
                 super.onPause();
                 Log.d(TAG, "MediaSession: Pause");
-                sendBroadcast(new Intent("PAUSE"));
+                if (mediaControllerCallback != null) {
+                    mediaControllerCallback.onPause();
+                } else {
+                    sendBroadcast(new Intent("PAUSE"));
+                }
             }
 
             @Override
             public void onSkipToNext() {
                 super.onSkipToNext();
                 Log.d(TAG, "MediaSession: Next");
-                sendBroadcast(new Intent("NEXT"));
+                if (mediaControllerCallback != null) {
+                    mediaControllerCallback.onNext();
+                } else {
+                    sendBroadcast(new Intent("NEXT"));
+                }
             }
 
             @Override
             public void onSkipToPrevious() {
                 super.onSkipToPrevious();
                 Log.d(TAG, "MediaSession: Previous");
-                sendBroadcast(new Intent("PREVIOUS"));
+                if (mediaControllerCallback != null) {
+                    mediaControllerCallback.onPrevious();
+                } else {
+                    sendBroadcast(new Intent("PREVIOUS"));
+                }
             }
 
             @Override
             public void onStop() {
                 super.onStop();
                 Log.d(TAG, "MediaSession: Stop");
-                sendBroadcast(new Intent("STOP"));
+                if (mediaControllerCallback != null) {
+                    mediaControllerCallback.onStop();
+                } else {
+                    sendBroadcast(new Intent("STOP"));
+                }
             }
         });
     }
@@ -132,6 +167,35 @@ public class MusicService extends Service {
         }
 
         Log.d(TAG, "Playback state updated - Playing: " + playing + ", Song: " + songName);
+    }
+
+    // Set callback for media control
+    public void setMediaControllerCallback(MediaControllerCallback callback) {
+        this.mediaControllerCallback = callback;
+    }
+
+    // Handle media actions directly in service
+    private void handleMediaAction(String action) {
+        Log.d(TAG, "Handling media action: " + action);
+        if (mediaControllerCallback != null) {
+            switch (action) {
+                case "PLAY":
+                    mediaControllerCallback.onPlay();
+                    break;
+                case "PAUSE":
+                    mediaControllerCallback.onPause();
+                    break;
+                case "STOP":
+                    mediaControllerCallback.onStop();
+                    break;
+                case "NEXT":
+                    mediaControllerCallback.onNext();
+                    break;
+                case "PREVIOUS":
+                    mediaControllerCallback.onPrevious();
+                    break;
+            }
+        }
     }
 
     public MediaSessionCompat getMediaSession() {
