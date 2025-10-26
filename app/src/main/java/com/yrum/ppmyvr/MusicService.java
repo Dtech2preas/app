@@ -14,14 +14,14 @@ import android.util.Log;
 public class MusicService extends Service {
     private static final String TAG = "MusicService";
     private final IBinder binder = new LocalBinder();
-    
+
     private boolean isPlaying = false;
     private String currentSongName = "";
     private String currentSongUri = "";
-    
-    // Media session for Spotify-like notifications
+
+    // Media session for notifications
     private MediaSessionCompat mediaSession;
-    
+
     public class LocalBinder extends Binder {
         MusicService getService() {
             return MusicService.this;
@@ -41,28 +41,25 @@ public class MusicService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Return STICKY to keep service running even if app is killed
         return START_STICKY;
     }
 
     private void initializeMediaSession() {
         mediaSession = new MediaSessionCompat(this, "D-TECH MUSIC");
-        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | 
-                            MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
-        
-        // Set playback state
+        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
+                              MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-                .setActions(PlaybackStateCompat.ACTION_PLAY | 
-                          PlaybackStateCompat.ACTION_PAUSE |
-                          PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                          PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                          PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                          PlaybackStateCompat.ACTION_STOP);
-        
+                .setActions(PlaybackStateCompat.ACTION_PLAY |
+                            PlaybackStateCompat.ACTION_PAUSE |
+                            PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                            PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                            PlaybackStateCompat.ACTION_STOP);
+
         mediaSession.setPlaybackState(stateBuilder.build());
         mediaSession.setActive(true);
-        
-        // Set media session callback
+
         mediaSession.setCallback(new MediaSessionCompat.Callback() {
             @Override
             public void onPlay() {
@@ -105,37 +102,35 @@ public class MusicService extends Service {
         this.isPlaying = playing;
         this.currentSongName = songName;
         this.currentSongUri = songUri;
-        
-        // Update media session state
+
         if (mediaSession != null) {
             int state = playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
-            
+
             PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-                    .setActions(PlaybackStateCompat.ACTION_PLAY | 
-                              PlaybackStateCompat.ACTION_PAUSE |
-                              PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                              PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                              PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                              PlaybackStateCompat.ACTION_STOP)
+                    .setActions(PlaybackStateCompat.ACTION_PLAY |
+                                PlaybackStateCompat.ACTION_PAUSE |
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                                PlaybackStateCompat.ACTION_STOP)
                     .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f);
-            
+
             mediaSession.setPlaybackState(stateBuilder.build());
-            
-            // Update metadata
+
+            // Metadata with D-TECH logo as default album art
             MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
-            if (songName != null && !songName.isEmpty()) {
-                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE, songName);
-                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
-                metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
-                
-                // Create a simple bitmap (you can replace this with actual album art)
-                Bitmap icon = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, icon);
-            }
-            
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE,
+                                      (songName != null && !songName.isEmpty()) ? songName : "D-TECH Music");
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
+
+            // Set D-TECH logo
+            Bitmap dtechLogo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
+            metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, dtechLogo);
+
             mediaSession.setMetadata(metadataBuilder.build());
         }
-        
+
         Log.d(TAG, "Playback state updated - Playing: " + playing + ", Song: " + songName);
     }
 
