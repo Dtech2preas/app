@@ -7,11 +7,15 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -28,6 +32,7 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
+import androidx.media.app.NotificationCompat.MediaStyle;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -78,6 +83,34 @@ public class MainActivity extends Activity {
     // Track if this is first app launch to show folder notification only once
     private boolean isFirstLaunch = true;
 
+    // Broadcast receiver for media actions from MediaSession
+    private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            Log.d(TAG, "Media action received: " + action);
+            if (action != null) {
+                switch (action) {
+                    case "PLAY":
+                        playCurrentSong();
+                        break;
+                    case "PAUSE":
+                        pauseSong();
+                        break;
+                    case "STOP":
+                        stopSong();
+                        break;
+                    case "NEXT":
+                        mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+                        break;
+                    case "PREVIOUS":
+                        mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
+                        break;
+                }
+            }
+        }
+    };
+
     // Service Connection
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -106,6 +139,15 @@ public class MainActivity extends Activity {
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Register broadcast receiver for media actions
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("PLAY");
+        filter.addAction("PAUSE");
+        filter.addAction("STOP");
+        filter.addAction("NEXT");
+        filter.addAction("PREVIOUS");
+        registerReceiver(mediaActionReceiver, filter);
 
         // Start and bind to Music Service for background playback
         Intent serviceIntent = new Intent(this, MusicService.class);
@@ -345,64 +387,77 @@ public class MainActivity extends Activity {
 
     @SuppressLint("UnspecifiedImmutableFlag")
     private void updateNotification() {
-        // Use system drawables as fallback
-        int playIcon = android.R.drawable.ic_media_play;
-        int pauseIcon = android.R.drawable.ic_media_pause;
-        int nextIcon = android.R.drawable.ic_media_next;
-        int prevIcon = android.R.drawable.ic_media_previous;
-        int stopIcon = android.R.drawable.ic_menu_close_clear_cancel;
-        int smallIcon = android.R.drawable.ic_media_play;
-
-        // Create simple notification without any extra dependencies
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(smallIcon)
-            .setContentTitle("D-TECH MUSIC")
-            .setContentText(isPlaying ? "▶ " + currentSongName : "Paused")
-            .setOngoing(isPlaying)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setSilent(true) // No notification sound
-            .setOnlyAlertOnce(true); // Prevent repeated alerts
-
-        // Create activity intents for media controls (direct launch - no BroadcastReceiver)
-        Intent playIntent = new Intent(this, MainActivity.class);
-        playIntent.setAction("PLAY");
-        playIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent playPendingIntent = PendingIntent.getActivity(this, 1, playIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent pauseIntent = new Intent(this, MainActivity.class);
-        pauseIntent.setAction("PAUSE");
-        pauseIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pausePendingIntent = PendingIntent.getActivity(this, 2, pauseIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent nextIntent = new Intent(this, MainActivity.class);
-        nextIntent.setAction("NEXT");
-        nextIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent nextPendingIntent = PendingIntent.getActivity(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent prevIntent = new Intent(this, MainActivity.class);
-        prevIntent.setAction("PREVIOUS");
-        prevIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent prevPendingIntent = PendingIntent.getActivity(this, 4, prevIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        Intent stopIntent = new Intent(this, MainActivity.class);
-        stopIntent.setAction("STOP");
-        stopIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent stopPendingIntent = PendingIntent.getActivity(this, 5, stopIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        // Add actions based on current state
-        builder.addAction(prevIcon, "Previous", prevPendingIntent);
-
-        if (isPlaying) {
-            builder.addAction(pauseIcon, "Pause", pausePendingIntent);
-        } else {
-            builder.addAction(playIcon, "Play", playPendingIntent);
+        if (musicService == null || musicService.getMediaSession() == null) {
+            return;
         }
 
-        builder.addAction(nextIcon, "Next", nextPendingIntent)
-               .addAction(stopIcon, "Stop", stopPendingIntent);
+        // Create album art bitmap
+        Bitmap albumArt = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
+
+        // Create Spotify-like media notification
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setLargeIcon(albumArt)
+            .setContentTitle(currentSongName.isEmpty() ? "D-TECH MUSIC" : currentSongName)
+            .setContentText("D-TECH MUSIC")
+            .setSubText("Now Playing")
+            .setOngoing(isPlaying)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setStyle(new MediaStyle()
+                .setMediaSession(musicService.getMediaSession().getSessionToken())
+                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
+            );
+
+        // Add media actions
+        builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
+            createMediaActionIntent("PREVIOUS"));
+        
+        if (isPlaying) {
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
+                createMediaActionIntent("PAUSE"));
+        } else {
+            builder.addAction(android.R.drawable.ic_media_play, "Play", 
+                createMediaActionIntent("PLAY"));
+        }
+        
+        builder.addAction(android.R.drawable.ic_media_next, "Next", 
+            createMediaActionIntent("NEXT"));
+
+        // Set content intent to open app
+        Intent appIntent = new Intent(this, MainActivity.class);
+        appIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, appIntent, PendingIntent.FLAG_IMMUTABLE);
+        builder.setContentIntent(contentIntent);
+
+        // For Android 13+, set foreground service behavior
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
 
         notificationManager.notify(NOTIFICATION_ID, builder.build());
+    }
+
+    private PendingIntent createMediaActionIntent(String action) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction(action);
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(this, getRequestCode(action), intent, 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private int getRequestCode(String action) {
+        switch (action) {
+            case "PLAY": return 1;
+            case "PAUSE": return 2;
+            case "NEXT": return 3;
+            case "PREVIOUS": return 4;
+            case "STOP": return 5;
+            default: return 0;
+        }
     }
 
     private void removeNotification() {
@@ -676,6 +731,11 @@ public class MainActivity extends Activity {
             downloadCheckHandler.removeCallbacks(runnable);
         }
         downloadCheckRunnables.clear();
+
+        // Unregister broadcast receiver
+        if (mediaActionReceiver != null) {
+            unregisterReceiver(mediaActionReceiver);
+        }
 
         if (isServiceBound) {
             unbindService(serviceConnection);
