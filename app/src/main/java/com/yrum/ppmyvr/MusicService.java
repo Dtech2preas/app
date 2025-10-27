@@ -11,10 +11,13 @@ import android.graphics.BitmapFactory;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
+import android.util.Log;
+
+import androidx.core.app.NotificationCompat;
+
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
-import android.util.Log;
 
 public class MusicService extends Service {
     private static final String TAG = "MusicService";
@@ -147,16 +150,6 @@ public class MusicService extends Service {
                     mediaControllerCallback.onStop();
                 }
             }
-
-            @Override
-            public void onPlayFromMediaId(String mediaId, Bundle extras) {
-                super.onPlayFromMediaId(mediaId, extras);
-                Log.d(TAG, "MediaSession: Play from media ID: " + mediaId);
-                // This allows starting playback directly from media controls
-                if (mediaControllerCallback != null && mediaControllerCallback instanceof MainActivity) {
-                    ((MainActivity) mediaControllerCallback).playSongFromNotification(mediaId);
-                }
-            }
         });
     }
 
@@ -207,33 +200,15 @@ public class MusicService extends Service {
                 (currentSongName.isEmpty() ? "Playing music" : "Now playing: " + currentSongName) :
                 "D-TECH Music Player is active";
 
-        Bitmap largeIcon = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
-
         builder.setContentTitle("D-TECH Music Player")
                .setContentText(notificationText)
-               .setSmallIcon(R.mipmap.ic_launcher)
-               .setLargeIcon(largeIcon)
+               .setSmallIcon(android.R.drawable.ic_media_play)
                .setContentIntent(contentIntent)
                .setOngoing(true)
                .setVisibility(Notification.VISIBILITY_PUBLIC)
                .setPriority(Notification.PRIORITY_HIGH)
-               .setSilent(true)
                .setShowWhen(false)
                .setOnlyAlertOnce(true);
-
-        // Set style for media playback with media session
-        if (mediaSession != null) {
-            android.support.v4.media.app.NotificationCompat.MediaStyle style = 
-                new android.support.v4.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(mediaSession.getSessionToken())
-                    .setShowActionsInCompactView(0, 1, 2);
-            
-            // For Android 13+ set the media style
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                builder.setStyle(new Notification.MediaStyle()
-                    .setMediaSession(mediaSession.getSessionToken()));
-            }
-        }
 
         return builder.build();
     }
@@ -278,9 +253,10 @@ public class MusicService extends Service {
             metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
             metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
 
-            Bitmap dtechLogo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
-            if (dtechLogo != null) {
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, dtechLogo);
+            // Use system default media play icon for album art
+            Bitmap albumArt = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
+            if (albumArt != null) {
+                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, albumArt);
             }
 
             mediaSession.setMetadata(metadataBuilder.build());
