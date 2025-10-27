@@ -951,13 +951,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        Log.d(TAG, "MainActivity onPause");
-        // Don't stop anything when app goes to background
-    }
-
-    @Override
     public void onBackPressed() {
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
