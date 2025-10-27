@@ -2,11 +2,7 @@ package com.yrum.ppmyvr;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -14,6 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
@@ -35,8 +32,8 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
-import androidx.core.app.NotificationCompat;
-import androidx.media.app.NotificationCompat.MediaStyle;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -54,11 +51,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "spotifydl_prefs";
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
-
-    // Notification
-    private static final String CHANNEL_ID = "music_player_channel";
-    private static final int NOTIFICATION_ID = 1;
-    private NotificationManager notificationManager;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 1001;
 
     // Media Player
     private MediaPlayer mediaPlayer;
@@ -118,12 +111,20 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             // Sync current state with service
             if (isPlaying) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
+            } else if (musicService.isPlaying()) {
+                // If service says it's playing but we're not, sync with service
+                isPlaying = true;
+                currentSongName = musicService.getCurrentSongName();
+                currentSongUri = musicService.getCurrentSongUri();
             }
+
+            Log.d(TAG, "Service connected, isPlaying: " + isPlaying);
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             isServiceBound = false;
+            Log.d(TAG, "Service disconnected");
         }
     };
 
@@ -133,8 +134,13 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Log.d(TAG, "MainActivity onCreate");
+
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Request notification permission for Android 13+
+        requestNotificationPermission();
 
         // Initialize network monitoring
         initializeNetworkMonitoring();
@@ -146,6 +152,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         filter.addAction("STOP");
         filter.addAction("NEXT");
         filter.addAction("PREVIOUS");
+        filter.addAction("PLAY_FROM_NOTIFICATION");
         registerReceiver(mediaActionReceiver, filter);
 
         // Start and bind to Music Service for background playback
@@ -156,14 +163,10 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         // Initialize MediaPlayer
         initializeMediaPlayer();
 
-        // Initialize notification
-        createNotificationChannel();
-        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
         // Handle media actions from notification when app is launched
         handleIntent(getIntent());
 
-        // Initialize download folder - CRITICAL!
+        // Initialize download folder
         initializeDownloadFolder();
 
         // WebView setup
@@ -188,6 +191,30 @@ public class MainActivity extends Activity implements MusicService.MediaControll
 
         // Load initial URL based on network availability
         loadAppropriateUrl();
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) 
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, 
+                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 
+                    NOTIFICATION_PERMISSION_REQUEST_CODE);
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Notification permission granted");
+            } else {
+                Log.w(TAG, "Notification permission denied");
+                Toast.makeText(this, "Notification permission is required for background music playback", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     // Implement MediaControllerCallback methods
@@ -221,10 +248,28 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
     }
 
+    @Override
+    public void onPlaySong(String songUri, String songName) {
+        Log.d(TAG, "MediaControllerCallback: PlaySong - " + songName);
+        playSong(songUri, songName);
+    }
+
+    public void playSongFromNotification(String mediaId) {
+        Log.d(TAG, "Play song from notification: " + mediaId);
+        // This method can be called when play is pressed from notification
+        // You can implement logic to play a specific song based on mediaId
+        if (mediaId != null && !mediaId.isEmpty()) {
+            playSong(mediaId, "Song from notification");
+        } else {
+            playCurrentSong();
+        }
+    }
+
     private void handleMediaAction(String action) {
         Log.d(TAG, "Handling media action: " + action);
         switch (action) {
             case "PLAY":
+            case "PLAY_FROM_NOTIFICATION":
                 playCurrentSong();
                 break;
             case "PAUSE":
@@ -448,6 +493,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     private void initializeMediaPlayer() {
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setOnCompletionListener(mp -> {
+            Log.d(TAG, "MediaPlayer: Song completed");
             isPlaying = false;
             runOnUiThread(() -> mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null));
 
@@ -455,14 +501,13 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
             }
-            updateNotification();
         });
 
         mediaPlayer.setOnPreparedListener(mp -> {
+            Log.d(TAG, "MediaPlayer: Prepared, starting playback");
             isPrepared = true;
             mediaPlayer.start();
             isPlaying = true;
-            updateNotification();
 
             // Update service
             if (isServiceBound) {
@@ -479,6 +524,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        Log.d(TAG, "onNewIntent: " + intent);
         handleIntent(intent);
     }
 
@@ -503,6 +549,8 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     // Media playback methods using Android MediaPlayer
     public void playSong(String songUri, String songName) {
         try {
+            Log.d(TAG, "Playing song: " + songName + " from: " + songUri);
+            
             // Stop current playback if any
             if (mediaPlayer.isPlaying()) {
                 mediaPlayer.stop();
@@ -516,22 +564,22 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             // Set data source and prepare async
             mediaPlayer.setDataSource(this, Uri.parse(songUri));
             mediaPlayer.prepareAsync();
-            updateNotification();
 
-            // Update service
+            // Update service immediately
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
+            Toast.makeText(this, "Error playing song: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
     private void playCurrentSong() {
+        Log.d(TAG, "playCurrentSong - isPrepared: " + isPrepared + ", isPlaying: " + isPlaying);
         if (isPrepared && !isPlaying) {
             mediaPlayer.start();
             isPlaying = true;
-            updateNotification();
 
             // Update service
             if (isServiceBound) {
@@ -540,14 +588,17 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         } else if (!isPrepared && currentSongUri != null && !currentSongUri.isEmpty()) {
             // If not prepared but we have a song URI, try to play it
             playSong(currentSongUri, currentSongName);
+        } else if (currentSongUri == null || currentSongUri.isEmpty()) {
+            Log.w(TAG, "No song to play");
+            Toast.makeText(this, "No song selected to play", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void pauseSong() {
+        Log.d(TAG, "Pausing song");
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.pause();
             isPlaying = false;
-            updateNotification();
 
             // Update service
             if (isServiceBound) {
@@ -557,6 +608,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     }
 
     private void stopSong() {
+        Log.d(TAG, "Stopping song");
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.stop();
         }
@@ -565,109 +617,11 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         isPrepared = false;
         currentSongName = "";
         currentSongUri = "";
-        updateNotification();
 
         // Update service
         if (isServiceBound) {
             musicService.updatePlaybackState(false, "", "");
         }
-    }
-
-    // Notification methods
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "D-TECH MUSIC Player",
-                NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Music playback controls");
-            channel.setShowBadge(false);
-            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            channel.setSound(null, null); // No sound for notifications
-
-            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            manager.createNotificationChannel(channel);
-        }
-    }
-
-    @SuppressLint("UnspecifiedImmutableFlag")
-    private void updateNotification() {
-        if (musicService == null || musicService.getMediaSession() == null) {
-            return;
-        }
-
-        // Create album art bitmap
-        Bitmap albumArt = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
-
-        // Create Spotify-like media notification
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setLargeIcon(albumArt)
-            .setContentTitle(currentSongName.isEmpty() ? "D-TECH MUSIC" : currentSongName)
-            .setContentText("D-TECH MUSIC")
-            .setSubText("Now Playing")
-            .setOngoing(isPlaying)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setSilent(true)
-            .setOnlyAlertOnce(true)
-            .setShowWhen(false)
-            .setStyle(new MediaStyle()
-                .setMediaSession(musicService.getMediaSession().getSessionToken())
-                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
-            );
-
-        // Add media actions
-        builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
-            createMediaActionIntent("PREVIOUS"));
-
-        if (isPlaying) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
-                createMediaActionIntent("PAUSE"));
-        } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Play", 
-                createMediaActionIntent("PLAY"));
-        }
-
-        builder.addAction(android.R.drawable.ic_media_next, "Next", 
-            createMediaActionIntent("NEXT"));
-
-        // Set content intent to open app
-        Intent appIntent = new Intent(this, MainActivity.class);
-        appIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, appIntent, PendingIntent.FLAG_IMMUTABLE);
-        builder.setContentIntent(contentIntent);
-
-        // For Android 13+, set foreground service behavior
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
-        }
-
-        notificationManager.notify(NOTIFICATION_ID, builder.build());
-    }
-
-    private PendingIntent createMediaActionIntent(String action) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction(action);
-        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(this, getRequestCode(action), intent, 
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-    }
-
-    private int getRequestCode(String action) {
-        switch (action) {
-            case "PLAY": return 1;
-            case "PAUSE": return 2;
-            case "NEXT": return 3;
-            case "PREVIOUS": return 4;
-            case "STOP": return 5;
-            default: return 0;
-        }
-    }
-
-    private void removeNotification() {
-        notificationManager.cancel(NOTIFICATION_ID);
     }
 
     // Enhanced download method with progress tracking
@@ -818,21 +772,25 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         // Media control methods
         @android.webkit.JavascriptInterface
         public void playSong(String songUri, String songName) {
+            Log.d(TAG, "Bridge: playSong - " + songName);
             runOnUiThread(() -> MainActivity.this.playSong(songUri, songName));
         }
 
         @android.webkit.JavascriptInterface
         public void pauseSong() {
+            Log.d(TAG, "Bridge: pauseSong");
             runOnUiThread(() -> MainActivity.this.pauseSong());
         }
 
         @android.webkit.JavascriptInterface
         public void resumeSong() {
+            Log.d(TAG, "Bridge: resumeSong");
             runOnUiThread(() -> MainActivity.this.playCurrentSong());
         }
 
         @android.webkit.JavascriptInterface
         public void stopSong() {
+            Log.d(TAG, "Bridge: stopSong");
             runOnUiThread(() -> MainActivity.this.stopSong());
         }
 
@@ -946,6 +904,8 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        Log.d(TAG, "MainActivity onDestroy");
+        
         // Clean up download check handlers
         for (Runnable runnable : downloadCheckRunnables.values()) {
             downloadCheckHandler.removeCallbacks(runnable);
@@ -963,25 +923,38 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         }
 
         if (isServiceBound) {
-            unbindService(serviceConnection);
+            // Don't unbind the service to keep it running
+            // unbindService(serviceConnection);
             isServiceBound = false;
         }
 
         if (mediaPlayer != null) {
             if (mediaPlayer.isPlaying()) {
-                mediaPlayer.stop();
+                // Don't stop playback when activity is destroyed
+                // mediaPlayer.stop();
             }
-            mediaPlayer.release();
+            // Don't release media player to keep music playing
+            // mediaPlayer.release();
         }
-        removeNotification();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        updateNotification();
-        // Check network status on resume
-        updateConnectionStatus();
+        Log.d(TAG, "MainActivity onResume");
+        
+        // Re-bind to service if not bound
+        if (!isServiceBound) {
+            Intent serviceIntent = new Intent(this, MusicService.class);
+            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.d(TAG, "MainActivity onPause");
+        // Don't stop anything when app goes to background
     }
 
     @Override
@@ -989,6 +962,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
+            // Move to background instead of closing
             moveTaskToBack(true);
         }
     }
