@@ -1,44 +1,67 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.2.0"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
 apply plugin: 'com.android.application'
 
 android {
     namespace "com.yrum.ppmyvr"
     compileSdk 34
 
-    defaultConfig {
-        applicationId "com.yrum.ppmyvr"
-        minSdk 21
-        targetSdk 34
-        versionCode 56898
-        versionName "1.25"
-    }
+    defaultConfig {  
+        applicationId "com.yrum.ppmyvr"  
+        minSdk 21  
+        targetSdk 34  
+        versionCode 56898  
+        versionName "1.25"  
+    }  
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
+    compileOptions {  
+        sourceCompatibility JavaVersion.VERSION_17  
+        targetCompatibility JavaVersion.VERSION_17  
+    }  
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
+    buildTypes {  
+        release {  
+            minifyEnabled false  
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'  
+        }  
+    }  
 
-    // Add this to ignore lint errors and continue building
-    lint {
-        abortOnError false
-        checkReleaseBuilds false
+    lint {  
+        abortOnError false  
+        checkReleaseBuilds false  
     }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    
-    // Core AndroidX dependencies
-    implementation 'androidx.core:core:1.9.0'
-    implementation 'androidx.media:media:1.6.0'
-    
-    // Media session compatibility
-    implementation 'androidx.media2:media2-session:1.2.1'
+
+    // Core AndroidX dependencies  
+    implementation 'androidx.core:core:1.12.0'  
+    implementation 'androidx.media:media:1.7.0'  
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+
+    // Media session compatibility  
+    implementation 'androidx.media2:media2-session:1.2.1'  
     implementation 'androidx.media2:media2-widget:1.2.1'
+    
+    // For better WebView compatibility
+    implementation 'androidx.webkit:webkit:1.9.0'
+    
+    // For notification compatibility
+    implementation 'androidx.core:core-google-shortcuts:1.1.0'
 }
