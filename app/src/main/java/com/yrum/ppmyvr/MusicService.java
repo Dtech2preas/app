@@ -15,14 +15,14 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
+
+// Use the correct imports for MediaSessionCompat
 import androidx.media.session.MediaButtonReceiver;
 import androidx.core.content.ContextCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
-// Updated imports for AndroidX Media3 compatibility
-import androidx.media3.common.util.UnstableApi;
-import androidx.media.session.MediaSessionCompat;
-
-@UnstableApi
 public class MusicService extends Service {
     private static final String TAG = "MusicService";
     private static final String CHANNEL_ID = "music_player_channel";
@@ -93,15 +93,14 @@ public class MusicService extends Service {
                                   MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
             // Set initial playback state
-            androidx.media.session.PlaybackStateCompat.Builder stateBuilder = 
-                new androidx.media.session.PlaybackStateCompat.Builder()
-                    .setActions(androidx.media.session.PlaybackStateCompat.ACTION_PLAY |
-                                androidx.media.session.PlaybackStateCompat.ACTION_PAUSE |
-                                androidx.media.session.PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                androidx.media.session.PlaybackStateCompat.ACTION_STOP |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SEEK_TO);
+            PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
+                    .setActions(PlaybackStateCompat.ACTION_PLAY |
+                                PlaybackStateCompat.ACTION_PAUSE |
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                                PlaybackStateCompat.ACTION_STOP |
+                                PlaybackStateCompat.ACTION_SEEK_TO);
 
             mediaSession.setPlaybackState(stateBuilder.build());
             mediaSession.setActive(true);
@@ -162,10 +161,20 @@ public class MusicService extends Service {
         
         // For Android 14+, use the correct foreground service type
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, 
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ? 
-                Service.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK : 
-                Service.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+            int foregroundServiceType = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Use reflection to access the constant for Android 14
+                try {
+                    Class<?> serviceClass = Service.class;
+                    java.lang.reflect.Field field = serviceClass.getField("FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK");
+                    foregroundServiceType = field.getInt(null);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting foreground service type: " + e.getMessage());
+                    // Fallback to 0 if we can't get the constant
+                    foregroundServiceType = 0;
+                }
+            }
+            startForeground(NOTIFICATION_ID, notification, foregroundServiceType);
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
@@ -250,50 +259,34 @@ public class MusicService extends Service {
         this.currentSongUri = songUri != null ? songUri : "";
 
         if (mediaSession != null) {
-            int state = playing ? 
-                androidx.media.session.PlaybackStateCompat.STATE_PLAYING : 
-                androidx.media.session.PlaybackStateCompat.STATE_PAUSED;
+            int state = playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;
 
-            androidx.media.session.PlaybackStateCompat.Builder stateBuilder = 
-                new androidx.media.session.PlaybackStateCompat.Builder()
-                    .setActions(androidx.media.session.PlaybackStateCompat.ACTION_PLAY |
-                                androidx.media.session.PlaybackStateCompat.ACTION_PAUSE |
-                                androidx.media.session.PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                androidx.media.session.PlaybackStateCompat.ACTION_STOP |
-                                androidx.media.session.PlaybackStateCompat.ACTION_SEEK_TO)
-                    .setState(state, 
-                             androidx.media.session.PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 
-                             1.0f);
+            PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
+                    .setActions(PlaybackStateCompat.ACTION_PLAY |
+                                PlaybackStateCompat.ACTION_PAUSE |
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                                PlaybackStateCompat.ACTION_STOP |
+                                PlaybackStateCompat.ACTION_SEEK_TO)
+                    .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f);
 
             mediaSession.setPlaybackState(stateBuilder.build());
 
             // Update metadata
-            androidx.media.session.MediaMetadataCompat.Builder metadataBuilder = 
-                new androidx.media.session.MediaMetadataCompat.Builder();
+            MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder();
             
-            metadataBuilder.putString(
-                androidx.media.session.MediaMetadataCompat.METADATA_KEY_TITLE,
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_TITLE,
                 currentSongName.isEmpty() ? "D-TECH Music" : currentSongName
             );
-            metadataBuilder.putString(
-                androidx.media.session.MediaMetadataCompat.METADATA_KEY_ARTIST, 
-                "D-TECH MUSIC"
-            );
-            metadataBuilder.putString(
-                androidx.media.session.MediaMetadataCompat.METADATA_KEY_ALBUM, 
-                "D-TECH MUSIC"
-            );
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "D-TECH MUSIC");
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "D-TECH MUSIC");
 
             // Set D-TECH logo
             try {
                 Bitmap dtechLogo = BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher);
                 if (dtechLogo != null) {
-                    metadataBuilder.putBitmap(
-                        androidx.media.session.MediaMetadataCompat.METADATA_KEY_ALBUM_ART, 
-                        dtechLogo
-                    );
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, dtechLogo);
                 }
             } catch (Exception e) {
                 Log.w(TAG, "Could not load D-TECH logo: " + e.getMessage());
