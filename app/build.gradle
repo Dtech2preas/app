@@ -41,6 +41,7 @@ android {
         }  
     }  
 
+    // Add this to ignore lint errors and continue building  
     lint {  
         abortOnError false  
         checkReleaseBuilds false  
@@ -64,4 +65,20 @@ dependencies {
     
     // For notification compatibility
     implementation 'androidx.core:core-google-shortcuts:1.1.0'
+
+    // Add explicit Kotlin stdlib dependency to resolve conflicts
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    
+    // Exclude old Kotlin stdlib versions from dependencies that bring them in
+    configurations.all {
+        resolutionStrategy {
+            // Force specific versions to avoid conflicts
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+            
+            // Prefer newer versions when there are conflicts
+            preferProjectModules()
+        }
+    }
 }
