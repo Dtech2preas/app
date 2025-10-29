@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest  
     xmlns:android="http://schemas.android.com/apk/res/android"  
-    xmlns:tools="http://schemas.android.com/tools"  
-    package="com.yrum.ppmyvr">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions -->  
     <uses-permission android:name="android.permission.INTERNET" />  
@@ -29,13 +28,6 @@
     <!-- Add this for proper media playback in background -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Add this to maintain compatibility -->
-    <queries>
-        <intent>
-            <action android:name="android.media.browse.MediaBrowserService" />
-        </intent>
-    </queries>
-
     <application  
         android:allowBackup="true"  
         android:icon="@mipmap/ic_launcher"  
@@ -47,7 +39,7 @@
 
         <!-- Main Activity (Home screen) -->  
         <activity  
-            android:name="com.yrum.ppmyvr.MainActivity"  
+            android:name=".MainActivity"  
             android:exported="true"  
             android:launchMode="singleTop"  
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
@@ -76,7 +68,7 @@
 
         <!-- Ad Popup Activity -->  
         <activity 
-            android:name="com.yrum.ppmyvr.PopupWebViewActivity" 
+            android:name=".PopupWebViewActivity" 
             android:exported="false" />
 
     </application>
