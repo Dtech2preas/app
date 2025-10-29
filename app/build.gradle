@@ -45,6 +45,25 @@ android {
         abortOnError false  
         checkReleaseBuilds false  
     }
+
+    // Add packaging options to exclude duplicate classes
+    packagingOptions {
+        exclude 'META-INF/*.kotlin_module'
+        resources.excludes.add("META-INF/*")
+    }
+}
+
+configurations.all {
+    // Force all Kotlin dependencies to use the same version
+    resolutionStrategy {
+        eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin') {
+                details.useVersion '1.8.22'
+            }
+        }
+        // Prefer project modules
+        preferProjectModules()
+    }
 }
 
 dependencies {
@@ -55,9 +74,17 @@ dependencies {
     implementation 'androidx.media:media:1.7.0'  
     implementation 'androidx.appcompat:appcompat:1.6.1'
 
-    // Media session compatibility - use the correct version
-    implementation 'androidx.media2:media2-session:1.2.1'  
-    implementation 'androidx.media2:media2-widget:1.2.1'
+    // Media session compatibility with exclusions
+    implementation ('androidx.media2:media2-session:1.2.1') {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
+    implementation ('androidx.media2:media2-widget:1.2.1') {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
     
     // For better WebView compatibility
     implementation 'androidx.webkit:webkit:1.9.0'
@@ -65,6 +92,14 @@ dependencies {
     // For notification compatibility
     implementation 'androidx.core:core-google-shortcuts:1.1.0'
 
-    // Kotlin to resolve conflicts
+    // Explicit Kotlin dependencies to avoid conflicts
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    constraints {
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22') {
+            because 'Force same Kotlin version'
+        }
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22') {
+            because 'Force same Kotlin version'
+        }
+    }
 }
