@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
@@ -31,6 +32,8 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.media.app.NotificationCompat.MediaStyle;
 
@@ -51,6 +54,7 @@ public class MainActivity extends Activity {
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "spotifydl_prefs";
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
+    private static final int PERMISSION_REQUEST_CODE = 1001;
 
     // Notification
     private static final String CHANNEL_ID = "music_player_channel";
@@ -118,7 +122,7 @@ public class MainActivity extends Activity {
             MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
             musicService = binder.getService();
             isServiceBound = true;
-            
+
             // Sync current state with service
             if (isPlaying) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -139,6 +143,9 @@ public class MainActivity extends Activity {
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
+
+        // Request necessary permissions for Android 14
+        requestRequiredPermissions();
 
         // Register broadcast receiver for media actions
         IntentFilter filter = new IntentFilter();
@@ -191,13 +198,59 @@ public class MainActivity extends Activity {
         mWebView.loadUrl(mainUrl);
     }
 
+    private void requestRequiredPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // For Android 13+ (API 33+)
+            if (ContextCompat.checkSelfPermission(this, 
+                    android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        PERMISSION_REQUEST_CODE);
+            }
+            
+            // For Android 14+ (API 34+) - READ_MEDIA_AUDIO permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                if (ContextCompat.checkSelfPermission(this,
+                        android.Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{android.Manifest.permission.READ_MEDIA_AUDIO},
+                            PERMISSION_REQUEST_CODE);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            // Handle permission results if needed
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "Permission granted: " + permissions[i]);
+                } else {
+                    Log.w(TAG, "Permission denied: " + permissions[i]);
+                    // Show message for notification permission
+                    if (android.Manifest.permission.POST_NOTIFICATIONS.equals(permissions[i])) {
+                        Toast.makeText(this, "Notification permission is recommended for music controls", Toast.LENGTH_LONG).show();
+                    }
+                }
+            }
+        }
+    }
+
     private void initializeDownloadFolder() {
-        // Create download folder in Music directory
-        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-            File musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC);
-            downloadFolder = new File(musicDir, "D-TECH MUSIC");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // For Android 11+, use scoped storage
+            downloadFolder = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "D-TECH MUSIC");
         } else {
-            downloadFolder = new File(getFilesDir(), "D-TECH MUSIC");
+            // For older versions, use legacy storage
+            if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+                File musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC);
+                downloadFolder = new File(musicDir, "D-TECH MUSIC");
+            } else {
+                downloadFolder = new File(getFilesDir(), "D-TECH MUSIC");
+            }
         }
 
         // Create folder if it doesn't exist
@@ -206,7 +259,6 @@ public class MainActivity extends Activity {
             Log.d(TAG, "Download folder created: " + created + " at " + downloadFolder.getAbsolutePath());
             if (!created) {
                 Log.e(TAG, "FAILED to create download folder!");
-                // Don't show toast every time
                 if (isFirstLaunch) {
                     Toast.makeText(this, "Failed to create download folder!", Toast.LENGTH_LONG).show();
                 }
@@ -218,7 +270,7 @@ public class MainActivity extends Activity {
 
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
-        
+
         // Only show folder location on first launch
         if (isFirstLaunch) {
             Toast.makeText(this, "Downloads saved to: D-TECH MUSIC folder", Toast.LENGTH_SHORT).show();
@@ -231,7 +283,7 @@ public class MainActivity extends Activity {
         mediaPlayer.setOnCompletionListener(mp -> {
             isPlaying = false;
             runOnUiThread(() -> mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null));
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -244,7 +296,7 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -314,7 +366,7 @@ public class MainActivity extends Activity {
             mediaPlayer.setDataSource(this, Uri.parse(songUri));
             mediaPlayer.prepareAsync();
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -329,7 +381,7 @@ public class MainActivity extends Activity {
             mediaPlayer.start();
             isPlaying = true;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -342,7 +394,7 @@ public class MainActivity extends Activity {
             mediaPlayer.pause();
             isPlaying = false;
             updateNotification();
-            
+
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -360,7 +412,7 @@ public class MainActivity extends Activity {
         currentSongName = "";
         currentSongUri = "";
         updateNotification();
-        
+
         // Update service
         if (isServiceBound) {
             musicService.updatePlaybackState(false, "", "");
@@ -415,7 +467,7 @@ public class MainActivity extends Activity {
         // Add media actions
         builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
             createMediaActionIntent("PREVIOUS"));
-        
+
         if (isPlaying) {
             builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
                 createMediaActionIntent("PAUSE"));
@@ -423,7 +475,7 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_play, "Play", 
                 createMediaActionIntent("PLAY"));
         }
-        
+
         builder.addAction(android.R.drawable.ic_media_next, "Next", 
             createMediaActionIntent("NEXT"));
 
