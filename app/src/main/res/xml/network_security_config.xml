@@ -6,9 +6,4 @@
             <certificates src="user" />
         </trust-anchors>
     </base-config>
-    
-    <!-- Allow cleartext for your specific domain if needed -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">music.preasx24.co.za</domain>
-    </domain-config>
 </network-security-config>
