@@ -2,7 +2,11 @@ package com.yrum.ppmyvr;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,14 +14,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
-import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -32,8 +31,8 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.media.app.NotificationCompat.MediaStyle;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,17 +40,22 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MainActivity extends Activity implements MusicService.MediaControllerCallback {
+public class MainActivity extends Activity {
 
     private static final String TAG = "MainActivity";
     private static final String PREFS_NAME = "spotifydl_prefs";
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
-    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 1001;
+
+    // Notification
+    private static final String CHANNEL_ID = "music_player_channel";
+    private static final int NOTIFICATION_ID = 1;
+    private NotificationManager notificationManager;
 
     // Media Player
     private MediaPlayer mediaPlayer;
@@ -70,7 +74,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
 
     // the website you browse for searching & server downloads
     private final String mainUrl = "https://music.preasx24.co.za";
-    private final String localUrl = "file:///android_asset/index.html";
 
     // Our predetermined download folder
     private File downloadFolder;
@@ -80,11 +83,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     // Track if this is first app launch to show folder notification only once
     private boolean isFirstLaunch = true;
 
-    // Network state tracking
-    private boolean isOnline = true;
-    private ConnectivityManager connectivityManager;
-    private ConnectivityManager.NetworkCallback networkCallback;
-
     // Broadcast receiver for media actions from MediaSession
     private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
         @Override
@@ -92,7 +90,23 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             String action = intent.getAction();
             Log.d(TAG, "Media action received: " + action);
             if (action != null) {
-                handleMediaAction(action);
+                switch (action) {
+                    case "PLAY":
+                        playCurrentSong();
+                        break;
+                    case "PAUSE":
+                        pauseSong();
+                        break;
+                    case "STOP":
+                        stopSong();
+                        break;
+                    case "NEXT":
+                        mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+                        break;
+                    case "PREVIOUS":
+                        mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
+                        break;
+                }
             }
         }
     };
@@ -104,27 +118,16 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             MusicService.LocalBinder binder = (MusicService.LocalBinder) service;
             musicService = binder.getService();
             isServiceBound = true;
-
-            // Set the callback for media control
-            musicService.setMediaControllerCallback(MainActivity.this);
-
+            
             // Sync current state with service
             if (isPlaying) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
-            } else if (musicService.isPlaying()) {
-                // If service says it's playing but we're not, sync with service
-                isPlaying = true;
-                currentSongName = musicService.getCurrentSongName();
-                currentSongUri = musicService.getCurrentSongUri();
             }
-
-            Log.d(TAG, "Service connected, isPlaying: " + isPlaying);
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             isServiceBound = false;
-            Log.d(TAG, "Service disconnected");
         }
     };
 
@@ -134,16 +137,8 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Log.d(TAG, "MainActivity onCreate");
-
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
-
-        // Request notification permission for Android 13+
-        requestNotificationPermission();
-
-        // Initialize network monitoring
-        initializeNetworkMonitoring();
 
         // Register broadcast receiver for media actions
         IntentFilter filter = new IntentFilter();
@@ -152,7 +147,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         filter.addAction("STOP");
         filter.addAction("NEXT");
         filter.addAction("PREVIOUS");
-        filter.addAction("PLAY_FROM_NOTIFICATION");
         registerReceiver(mediaActionReceiver, filter);
 
         // Start and bind to Music Service for background playback
@@ -163,10 +157,14 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         // Initialize MediaPlayer
         initializeMediaPlayer();
 
+        // Initialize notification
+        createNotificationChannel();
+        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
         // Handle media actions from notification when app is launched
         handleIntent(getIntent());
 
-        // Initialize download folder
+        // Initialize download folder - CRITICAL!
         initializeDownloadFolder();
 
         // WebView setup
@@ -186,273 +184,11 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Custom WebViewClient to handle network state changes
-        mWebView.setWebViewClient(new CustomWebViewClient());
+        // Simple WebViewClient - don't interfere with website
+        mWebView.setWebViewClient(new WebViewClient());
 
-        // Load initial URL based on network availability
-        loadAppropriateUrl();
-    }
-
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) 
-                != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, 
-                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 
-                    NOTIFICATION_PERMISSION_REQUEST_CODE);
-            }
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "Notification permission granted");
-            } else {
-                Log.w(TAG, "Notification permission denied");
-                Toast.makeText(this, "Notification permission is required for background music playback", Toast.LENGTH_LONG).show();
-            }
-        }
-    }
-
-    // Implement MediaControllerCallback methods
-    @Override
-    public void onPlay() {
-        Log.d(TAG, "MediaControllerCallback: Play");
-        playCurrentSong();
-    }
-
-    @Override
-    public void onPause() {
-        Log.d(TAG, "MediaControllerCallback: Pause");
-        pauseSong();
-    }
-
-    @Override
-    public void onStop() {
-        Log.d(TAG, "MediaControllerCallback: Stop");
-        stopSong();
-    }
-
-    @Override
-    public void onNext() {
-        Log.d(TAG, "MediaControllerCallback: Next");
-        mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
-    }
-
-    @Override
-    public void onPrevious() {
-        Log.d(TAG, "MediaControllerCallback: Previous");
-        mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
-    }
-
-    @Override
-    public void onPlaySong(String songUri, String songName) {
-        Log.d(TAG, "MediaControllerCallback: PlaySong - " + songName);
-        playSong(songUri, songName);
-    }
-
-    public void playSongFromNotification(String mediaId) {
-        Log.d(TAG, "Play song from notification: " + mediaId);
-        // This method can be called when play is pressed from notification
-        // You can implement logic to play a specific song based on mediaId
-        if (mediaId != null && !mediaId.isEmpty()) {
-            playSong(mediaId, "Song from notification");
-        } else {
-            playCurrentSong();
-        }
-    }
-
-    private void handleMediaAction(String action) {
-        Log.d(TAG, "Handling media action: " + action);
-        switch (action) {
-            case "PLAY":
-            case "PLAY_FROM_NOTIFICATION":
-                playCurrentSong();
-                break;
-            case "PAUSE":
-                pauseSong();
-                break;
-            case "STOP":
-                stopSong();
-                break;
-            case "NEXT":
-                mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
-                break;
-            case "PREVIOUS":
-                mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
-                break;
-        }
-    }
-
-    private void initializeNetworkMonitoring() {
-        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            networkCallback = new ConnectivityManager.NetworkCallback() {
-                @Override
-                public void onAvailable(Network network) {
-                    super.onAvailable(network);
-                    Log.d(TAG, "Network available");
-                    if (!isOnline) {
-                        isOnline = true;
-                        runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "Internet connected - loading online content", Toast.LENGTH_SHORT).show();
-                            loadAppropriateUrl();
-                        });
-                    }
-                }
-
-                @Override
-                public void onLost(Network network) {
-                    super.onLost(network);
-                    Log.d(TAG, "Network lost");
-                    if (isOnline) {
-                        isOnline = false;
-                        runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "No internet - loading offline content", Toast.LENGTH_LONG).show();
-                            loadAppropriateUrl();
-                        });
-                    }
-                }
-            };
-
-            // Register the network callback
-            connectivityManager.registerDefaultNetworkCallback(networkCallback);
-        } else {
-            // For older devices, use BroadcastReceiver
-            IntentFilter connectivityFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-            registerReceiver(new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, Intent intent) {
-                    updateConnectionStatus();
-                }
-            }, connectivityFilter);
-        }
-
-        // Initial network status check
-        updateConnectionStatus();
-    }
-
-    private void updateConnectionStatus() {
-        boolean previousStatus = isOnline;
-        isOnline = isNetworkAvailable();
-
-        if (previousStatus != isOnline) {
-            runOnUiThread(() -> {
-                if (isOnline) {
-                    Toast.makeText(MainActivity.this, "Internet connected - loading online content", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(MainActivity.this, "No internet - loading offline content", Toast.LENGTH_LONG).show();
-                }
-                loadAppropriateUrl();
-            });
-        }
-    }
-
-    private boolean isNetworkAvailable() {
-        if (connectivityManager == null) {
-            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Network network = connectivityManager.getActiveNetwork();
-            if (network == null) return false;
-
-            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
-            return capabilities != null && 
-                   (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
-        } else {
-            NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
-            return networkInfo != null && networkInfo.isConnected();
-        }
-    }
-
-    private void loadAppropriateUrl() {
-        if (isOnline) {
-            Log.d(TAG, "Loading online URL: " + mainUrl);
-            mWebView.loadUrl(mainUrl);
-        } else {
-            Log.d(TAG, "Loading offline URL: " + localUrl);
-            mWebView.loadUrl(localUrl);
-        }
-    }
-
-    private class CustomWebViewClient extends WebViewClient {
-        @Override
-        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            super.onReceivedError(view, errorCode, description, failingUrl);
-            Log.e(TAG, "WebView error: " + description + " Code: " + errorCode);
-
-            // If online but failed to load, try offline
-            if (isOnline) {
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "Failed to load online content, switching to offline", Toast.LENGTH_LONG).show();
-                    isOnline = false;
-                    loadAppropriateUrl();
-                });
-            }
-        }
-
-        @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            // Allow local file URLs when offline
-            if (url.startsWith("file:///android_asset/") || url.startsWith("javascript:")) {
-                return false;
-            }
-
-            // For external URLs when offline, show message
-            if (!isOnline && !url.startsWith("file://")) {
-                Toast.makeText(MainActivity.this, "Internet required for external links", Toast.LENGTH_SHORT).show();
-                return true;
-            }
-
-            // For main domain URLs, load in WebView
-            if (url.contains("music.preasx24.co.za")) {
-                view.loadUrl(url);
-                return true;
-            }
-
-            // For other external URLs, open in browser if online
-            if (isOnline) {
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    startActivity(intent);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to open external URL: " + e.getMessage());
-                }
-                return true;
-            }
-
-            return false;
-        }
-
-        @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
-            Log.d(TAG, "Page loaded: " + url);
-
-            // Inject JavaScript to handle network state in web page
-            injectNetworkStateScript();
-        }
-    }
-
-    private void injectNetworkStateScript() {
-        String networkScript = String.format(
-            "javascript:(function() {" +
-            "window.isOnline = %s;" +
-            "if (typeof onNetworkStateChange === 'function') {" +
-            "   onNetworkStateChange(%s);" +
-            "}" +
-            "})()", 
-            isOnline ? "true" : "false", 
-            isOnline ? "true" : "false"
-        );
-        mWebView.evaluateJavascript(networkScript, null);
+        // Load the main website
+        mWebView.loadUrl(mainUrl);
     }
 
     private void initializeDownloadFolder() {
@@ -482,7 +218,7 @@ public class MainActivity extends Activity implements MusicService.MediaControll
 
         // Save the folder path
         saveDownloadFolderPath(downloadFolder.getAbsolutePath());
-
+        
         // Only show folder location on first launch
         if (isFirstLaunch) {
             Toast.makeText(this, "Downloads saved to: D-TECH MUSIC folder", Toast.LENGTH_SHORT).show();
@@ -493,22 +229,22 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     private void initializeMediaPlayer() {
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setOnCompletionListener(mp -> {
-            Log.d(TAG, "MediaPlayer: Song completed");
             isPlaying = false;
             runOnUiThread(() -> mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null));
-
+            
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
             }
+            updateNotification();
         });
 
         mediaPlayer.setOnPreparedListener(mp -> {
-            Log.d(TAG, "MediaPlayer: Prepared, starting playback");
             isPrepared = true;
             mediaPlayer.start();
             isPlaying = true;
-
+            updateNotification();
+            
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
@@ -524,7 +260,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        Log.d(TAG, "onNewIntent: " + intent);
         handleIntent(intent);
     }
 
@@ -532,7 +267,23 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         if (intent != null && intent.getAction() != null) {
             String action = intent.getAction();
             Log.d(TAG, "Handle intent action: " + action);
-            handleMediaAction(action);
+            switch (action) {
+                case "PLAY":
+                    playCurrentSong();
+                    break;
+                case "PAUSE":
+                    pauseSong();
+                    break;
+                case "STOP":
+                    stopSong();
+                    break;
+                case "NEXT":
+                    mWebView.evaluateJavascript("if(window.playNextSong) playNextSong();", null);
+                    break;
+                case "PREVIOUS":
+                    mWebView.evaluateJavascript("if(window.playPreviousSong) playPreviousSong();", null);
+                    break;
+            }
         }
     }
 
@@ -549,8 +300,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     // Media playback methods using Android MediaPlayer
     public void playSong(String songUri, String songName) {
         try {
-            Log.d(TAG, "Playing song: " + songName + " from: " + songUri);
-            
             // Stop current playback if any
             if (mediaPlayer.isPlaying()) {
                 mediaPlayer.stop();
@@ -564,42 +313,36 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             // Set data source and prepare async
             mediaPlayer.setDataSource(this, Uri.parse(songUri));
             mediaPlayer.prepareAsync();
-
-            // Update service immediately
+            updateNotification();
+            
+            // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error playing song: " + e.getMessage());
-            Toast.makeText(this, "Error playing song: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
     private void playCurrentSong() {
-        Log.d(TAG, "playCurrentSong - isPrepared: " + isPrepared + ", isPlaying: " + isPlaying);
         if (isPrepared && !isPlaying) {
             mediaPlayer.start();
             isPlaying = true;
-
+            updateNotification();
+            
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(true, currentSongName, currentSongUri);
             }
-        } else if (!isPrepared && currentSongUri != null && !currentSongUri.isEmpty()) {
-            // If not prepared but we have a song URI, try to play it
-            playSong(currentSongUri, currentSongName);
-        } else if (currentSongUri == null || currentSongUri.isEmpty()) {
-            Log.w(TAG, "No song to play");
-            Toast.makeText(this, "No song selected to play", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void pauseSong() {
-        Log.d(TAG, "Pausing song");
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.pause();
             isPlaying = false;
-
+            updateNotification();
+            
             // Update service
             if (isServiceBound) {
                 musicService.updatePlaybackState(false, currentSongName, currentSongUri);
@@ -608,7 +351,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     }
 
     private void stopSong() {
-        Log.d(TAG, "Stopping song");
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.stop();
         }
@@ -617,11 +359,109 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         isPrepared = false;
         currentSongName = "";
         currentSongUri = "";
-
+        updateNotification();
+        
         // Update service
         if (isServiceBound) {
             musicService.updatePlaybackState(false, "", "");
         }
+    }
+
+    // Notification methods
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "D-TECH MUSIC Player",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Music playback controls");
+            channel.setShowBadge(false);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            channel.setSound(null, null); // No sound for notifications
+
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    @SuppressLint("UnspecifiedImmutableFlag")
+    private void updateNotification() {
+        if (musicService == null || musicService.getMediaSession() == null) {
+            return;
+        }
+
+        // Create album art bitmap
+        Bitmap albumArt = BitmapFactory.decodeResource(getResources(), android.R.drawable.ic_media_play);
+
+        // Create Spotify-like media notification
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setLargeIcon(albumArt)
+            .setContentTitle(currentSongName.isEmpty() ? "D-TECH MUSIC" : currentSongName)
+            .setContentText("D-TECH MUSIC")
+            .setSubText("Now Playing")
+            .setOngoing(isPlaying)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setStyle(new MediaStyle()
+                .setMediaSession(musicService.getMediaSession().getSessionToken())
+                .setShowActionsInCompactView(0, 1, 2) // Show prev, play/pause, next in compact view
+            );
+
+        // Add media actions
+        builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
+            createMediaActionIntent("PREVIOUS"));
+        
+        if (isPlaying) {
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
+                createMediaActionIntent("PAUSE"));
+        } else {
+            builder.addAction(android.R.drawable.ic_media_play, "Play", 
+                createMediaActionIntent("PLAY"));
+        }
+        
+        builder.addAction(android.R.drawable.ic_media_next, "Next", 
+            createMediaActionIntent("NEXT"));
+
+        // Set content intent to open app
+        Intent appIntent = new Intent(this, MainActivity.class);
+        appIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, appIntent, PendingIntent.FLAG_IMMUTABLE);
+        builder.setContentIntent(contentIntent);
+
+        // For Android 13+, set foreground service behavior
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
+
+        notificationManager.notify(NOTIFICATION_ID, builder.build());
+    }
+
+    private PendingIntent createMediaActionIntent(String action) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction(action);
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(this, getRequestCode(action), intent, 
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private int getRequestCode(String action) {
+        switch (action) {
+            case "PLAY": return 1;
+            case "PAUSE": return 2;
+            case "NEXT": return 3;
+            case "PREVIOUS": return 4;
+            case "STOP": return 5;
+            default: return 0;
+        }
+    }
+
+    private void removeNotification() {
+        notificationManager.cancel(NOTIFICATION_ID);
     }
 
     // Enhanced download method with progress tracking
@@ -772,25 +612,21 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         // Media control methods
         @android.webkit.JavascriptInterface
         public void playSong(String songUri, String songName) {
-            Log.d(TAG, "Bridge: playSong - " + songName);
             runOnUiThread(() -> MainActivity.this.playSong(songUri, songName));
         }
 
         @android.webkit.JavascriptInterface
         public void pauseSong() {
-            Log.d(TAG, "Bridge: pauseSong");
             runOnUiThread(() -> MainActivity.this.pauseSong());
         }
 
         @android.webkit.JavascriptInterface
         public void resumeSong() {
-            Log.d(TAG, "Bridge: resumeSong");
             runOnUiThread(() -> MainActivity.this.playCurrentSong());
         }
 
         @android.webkit.JavascriptInterface
         public void stopSong() {
-            Log.d(TAG, "Bridge: stopSong");
             runOnUiThread(() -> MainActivity.this.stopSong());
         }
 
@@ -845,20 +681,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             runOnUiThread(() -> downloadSongWithProgress(urlString, fileName, downloadId));
         }
 
-        // Network state methods
-        @android.webkit.JavascriptInterface
-        public boolean isOnline() {
-            return isOnline;
-        }
-
-        @android.webkit.JavascriptInterface
-        public void checkNetworkAndReload() {
-            runOnUiThread(() -> {
-                updateConnectionStatus();
-                loadAppropriateUrl();
-            });
-        }
-
         // Test method to check download folder
         @android.webkit.JavascriptInterface
         public String testDownloadFolder() {
@@ -904,8 +726,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        Log.d(TAG, "MainActivity onDestroy");
-        
         // Clean up download check handlers
         for (Runnable runnable : downloadCheckRunnables.values()) {
             downloadCheckHandler.removeCallbacks(runnable);
@@ -917,37 +737,33 @@ public class MainActivity extends Activity implements MusicService.MediaControll
             unregisterReceiver(mediaActionReceiver);
         }
 
-        // Unregister network callback
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && networkCallback != null) {
-            connectivityManager.unregisterNetworkCallback(networkCallback);
-        }
-
         if (isServiceBound) {
-            // Don't unbind the service to keep it running
-            // unbindService(serviceConnection);
+            unbindService(serviceConnection);
             isServiceBound = false;
         }
 
         if (mediaPlayer != null) {
             if (mediaPlayer.isPlaying()) {
-                // Don't stop playback when activity is destroyed
-                // mediaPlayer.stop();
+                mediaPlayer.stop();
             }
-            // Don't release media player to keep music playing
-            // mediaPlayer.release();
+            mediaPlayer.release();
+        }
+        removeNotification();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Don't stop playback when app goes to background
+        if (isPlaying) {
+            updateNotification();
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d(TAG, "MainActivity onResume");
-        
-        // Re-bind to service if not bound
-        if (!isServiceBound) {
-            Intent serviceIntent = new Intent(this, MusicService.class);
-            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
-        }
+        updateNotification();
     }
 
     @Override
@@ -955,7 +771,6 @@ public class MainActivity extends Activity implements MusicService.MediaControll
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
-            // Move to background instead of closing
             moveTaskToBack(true);
         }
     }
