@@ -59,9 +59,13 @@ public class MusicService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Handle media button events
-        if (intent != null && MediaButtonReceiver.handleIntent(mediaSession, intent)) {
-            return START_STICKY;
+        // Handle media button events - FIXED VERSION
+        if (intent != null) {
+            KeyEvent keyEvent = MediaButtonReceiver.handleIntent(mediaSession, intent);
+            if (keyEvent != null) {
+                // Media button was handled, return early
+                return START_STICKY;
+            }
         }
 
         // Start as foreground service for Android 14 compatibility
