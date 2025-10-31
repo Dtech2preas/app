@@ -586,7 +586,8 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_pause, "Pause",
                 createMediaActionIntent("PAUSE"));
         } else {
-            builder.addAction(android.r.drawable.ic_media_play, "Play",
+            // FIX: Changed android.r to android.R
+            builder.addAction(android.R.drawable.ic_media_play, "Play",
                 createMediaActionIntent("PLAY"));
         }
 
