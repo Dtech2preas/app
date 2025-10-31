@@ -59,8 +59,8 @@ public class MainActivity extends Activity {
     // --- NEW: Constants for Ad URL ---
     private static final String PREFS_KEY_AD_COUNT = "ad_open_count";
     private static final String PREFS_KEY_AD_TIMESTAMP = "last_ad_open_timestamp";
-    // --- TODO: CHANGE THIS URL TO THE ONE YOU WANT TO OPEN ---
-    private static final String AD_URL_TO_OPEN = "https://www.google.com";
+    // --- MODIFIED: Updated the URL as requested ---
+    private static final String AD_URL_TO_OPEN = "https://otieu.com/4/10119706";
     // ---------------------------------
 
     // Notification
@@ -223,7 +223,8 @@ public class MainActivity extends Activity {
                     return true;
                 } catch (Exception e) {
                     Log.e(TAG, "Could not parse intent URI: " + e.getMessage());
-                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.SHORT).show();
+                    // --- FIXED: Changed Toast.SHORT to Toast.LENGTH_SHORT ---
+                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.LENGTH_SHORT).show();
                     return true; // Don't load the error page
                 }
             } else if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -256,7 +257,8 @@ public class MainActivity extends Activity {
                     return true;
                 } catch (Exception e) {
                     Log.e(TAG, "Could not handle unknown scheme: " + e.getMessage());
-                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.SHORT).show();
+                    // --- FIXED: Changed Toast.SHORT to Toast.LENGTH_SHORT ---
+                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.LENGTH_SHORT).show();
                     return true;
                 }
             }
