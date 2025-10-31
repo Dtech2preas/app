@@ -56,6 +56,13 @@ public class MainActivity extends Activity {
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
+    // --- NEW: Constants for Ad URL ---
+    private static final String PREFS_KEY_AD_COUNT = "ad_open_count";
+    private static final String PREFS_KEY_AD_TIMESTAMP = "last_ad_open_timestamp";
+    // --- TODO: CHANGE THIS URL TO THE ONE YOU WANT TO OPEN ---
+    private static final String AD_URL_TO_OPEN = "https://www.google.com";
+    // ---------------------------------
+
     // Notification
     private static final String CHANNEL_ID = "music_player_channel";
     private static final int NOTIFICATION_ID = 1;
@@ -191,23 +198,118 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // Simple WebViewClient - don't interfere with website
-        mWebView.setWebViewClient(new WebViewClient());
+        // --- MODIFIED: Use custom WebViewClient to handle intents ---
+        mWebView.setWebViewClient(new DTechWebViewClient());
+        // -----------------------------------------------------------
 
         // Load the main website
         mWebView.loadUrl(mainUrl);
     }
 
+    // --- NEW: Custom WebViewClient to handle unknown URL schemes ---
+    private class DTechWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            Log.d(TAG, "shouldOverrideUrlLoading: " + url);
+            String mainHost = Uri.parse(mainUrl).getHost();
+
+            if (url.startsWith("intent://")) {
+                // Handle intent:// URLs
+                try {
+                    Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                    Log.d(TAG, "Handled intent:// URL");
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Could not parse intent URI: " + e.getMessage());
+                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.SHORT).show();
+                    return true; // Don't load the error page
+                }
+            } else if (url.startsWith("http://") || url.startsWith("https://")) {
+                // Handle http/https URLs
+                String host = Uri.parse(url).getHost();
+                if (mainHost != null && mainHost.equals(host)) {
+                    // This is a click within our main app
+                    triggerAdUrl(); // --- Fire the "5 times a day" logic on navigation ---
+                    return false; // Load in WebView
+                } else {
+                    // External http/https link, open in default browser
+                    try {
+                        Log.d(TAG, "Opening external URL in browser: " + url);
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        return true;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Could not open external URL: " + e.getMessage());
+                        return true;
+                    }
+                }
+            } else {
+                // Other schemes like tel:, mailto:, etc. (or unknown ones)
+                try {
+                    Log.d(TAG, "Handling unknown scheme: " + url);
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Could not handle unknown scheme: " + e.getMessage());
+                    Toast.makeText(MainActivity.this, "Cannot open link", Toast.SHORT).show();
+                    return true;
+                }
+            }
+        }
+    }
+    
+    // --- NEW: Method to trigger the ad URL 5 times per day ---
+    private void triggerAdUrl() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+
+        int openCount = prefs.getInt(PREFS_KEY_AD_COUNT, 0);
+        long lastOpenTimestamp = prefs.getLong(PREFS_KEY_AD_TIMESTAMP, 0);
+        long now = System.currentTimeMillis();
+
+        // Check if 24 hours have passed to reset the count
+        if (now - lastOpenTimestamp > 24 * 60 * 60 * 1000) {
+            Log.d(TAG, "Resetting ad count for the day.");
+            openCount = 0;
+            lastOpenTimestamp = now; // Set new timestamp for the 24h window
+        }
+
+        if (openCount < 5) {
+            Log.d(TAG, "Triggering ad URL, count: " + (openCount + 1));
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(AD_URL_TO_OPEN));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+
+                // Increment count and save
+                editor.putInt(PREFS_KEY_AD_COUNT, openCount + 1);
+                editor.putLong(PREFS_KEY_AD_TIMESTAMP, lastOpenTimestamp);
+                editor.apply();
+
+            } catch (Exception e) {
+                Log.e(TAG, "Could not open ad URL: " + e.getMessage());
+            }
+        } else {
+            Log.d(TAG, "Ad URL daily limit reached.");
+        }
+    }
+    // -----------------------------------------------------
+
     private void requestRequiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // For Android 13+ (API 33+)
-            if (ContextCompat.checkSelfPermission(this, 
+            if (ContextCompat.checkSelfPermission(this,
                     android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this,
                         new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
                         PERMISSION_REQUEST_CODE);
             }
-            
+
             // For Android 14+ (API 34+) - READ_MEDIA_AUDIO permission
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 if (ContextCompat.checkSelfPermission(this,
@@ -465,18 +567,18 @@ public class MainActivity extends Activity {
             );
 
         // Add media actions
-        builder.addAction(android.R.drawable.ic_media_previous, "Previous", 
+        builder.addAction(android.R.drawable.ic_media_previous, "Previous",
             createMediaActionIntent("PREVIOUS"));
 
         if (isPlaying) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Pause", 
+            builder.addAction(android.R.drawable.ic_media_pause, "Pause",
                 createMediaActionIntent("PAUSE"));
         } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Play", 
+            builder.addAction(android.R.drawable.ic_media_play, "Play",
                 createMediaActionIntent("PLAY"));
         }
 
-        builder.addAction(android.R.drawable.ic_media_next, "Next", 
+        builder.addAction(android.R.drawable.ic_media_next, "Next",
             createMediaActionIntent("NEXT"));
 
         // Set content intent to open app
@@ -497,7 +599,7 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(this, MainActivity.class);
         intent.setAction(action);
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(this, getRequestCode(action), intent, 
+        return PendingIntent.getActivity(this, getRequestCode(action), intent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
@@ -604,7 +706,7 @@ public class MainActivity extends Activity {
                     mWebView.evaluateJavascript("if(window.loadLocalSongs) loadLocalSongs();", null);
                 });
             } else {
-                runOnUiThread(() -> 
+                runOnUiThread(() ->
                     Toast.makeText(MainActivity.this, "Download failed: " + downloadId, Toast.LENGTH_SHORT).show());
             }
         }
@@ -643,7 +745,7 @@ public class MainActivity extends Activity {
                 for (File file : files) {
                     if (file.isFile()) {
                         String name = file.getName();
-                        if (name.toLowerCase().endsWith(".mp3") || name.toLowerCase().endsWith(".m4a") || 
+                        if (name.toLowerCase().endsWith(".mp3") || name.toLowerCase().endsWith(".m4a") ||
                             name.toLowerCase().endsWith(".wav") || name.toLowerCase().endsWith(".ogg") ||
                             name.toLowerCase().endsWith(".opus")) {
                             JSONObject o = new JSONObject();
@@ -749,7 +851,7 @@ public class MainActivity extends Activity {
                 return "Cannot list files in download folder";
             }
 
-            return "Download folder OK: " + downloadFolder.getAbsolutePath() + 
+            return "Download folder OK: " + downloadFolder.getAbsolutePath() +
                    " | Files: " + files.length;
         }
 
