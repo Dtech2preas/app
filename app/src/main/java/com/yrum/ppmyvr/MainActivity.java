@@ -56,11 +56,13 @@ public class MainActivity extends Activity {
     private static final String PREFS_KEY_DOWNLOAD_FOLDER = "download_folder_path";
     private static final int PERMISSION_REQUEST_CODE = 1001;
 
-    // --- NEW: Constants for Ad URL ---
+    // --- Constants for Ad URL ---
     private static final String PREFS_KEY_AD_COUNT = "ad_open_count";
     private static final String PREFS_KEY_AD_TIMESTAMP = "last_ad_open_timestamp";
-    // --- MODIFIED: Updated the URL as requested ---
     private static final String AD_URL_TO_OPEN = "https://otieu.com/4/10119706";
+    // --- NEW: Ad Timer ---
+    private Handler adHandler = new Handler();
+    private static final long AD_TIMER_INTERVAL = 3 * 60 * 60 * 1000; // 3 hours
     // ---------------------------------
 
     // Notification
@@ -142,6 +144,21 @@ public class MainActivity extends Activity {
         }
     };
 
+    // --- NEW: Runnable for the ad timer ---
+    private Runnable adRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                // Try to trigger the ad
+                triggerAdUrl();
+            } finally {
+                // Re-post the runnable to run again in 3 hours
+                adHandler.postDelayed(this, AD_TIMER_INTERVAL);
+            }
+        }
+    };
+    // ------------------------------------
+
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -198,15 +215,19 @@ public class MainActivity extends Activity {
         bridge = new AndroidBridge(this);
         mWebView.addJavascriptInterface(bridge, "Android");
 
-        // --- MODIFIED: Use custom WebViewClient to handle intents ---
+        // --- Use custom WebViewClient to handle intents ---
         mWebView.setWebViewClient(new DTechWebViewClient());
-        // -----------------------------------------------------------
+        // --------------------------------------------------
 
         // Load the main website
         mWebView.loadUrl(mainUrl);
+
+        // --- NEW: Start the ad timer ---
+        adHandler.post(adRunnable);
+        // -----------------------------
     }
 
-    // --- NEW: Custom WebViewClient to handle unknown URL schemes ---
+    // --- MODIFIED: Custom WebViewClient to handle unknown URL schemes ---
     private class DTechWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -214,7 +235,7 @@ public class MainActivity extends Activity {
             String mainHost = Uri.parse(mainUrl).getHost();
 
             if (url.startsWith("intent://")) {
-                // Handle intent:// URLs
+                // Handle intent:// URLs -> Outside
                 try {
                     Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -223,7 +244,6 @@ public class MainActivity extends Activity {
                     return true;
                 } catch (Exception e) {
                     Log.e(TAG, "Could not parse intent URI: " + e.getMessage());
-                    // --- FIXED: Changed Toast.SHORT to Toast.LENGTH_SHORT ---
                     Toast.makeText(MainActivity.this, "Cannot open link", Toast.LENGTH_SHORT).show();
                     return true; // Don't load the error page
                 }
@@ -231,24 +251,15 @@ public class MainActivity extends Activity {
                 // Handle http/https URLs
                 String host = Uri.parse(url).getHost();
                 if (mainHost != null && mainHost.equals(host)) {
-                    // This is a click within our main app
-                    triggerAdUrl(); // --- Fire the "5 times a day" logic on navigation ---
-                    return false; // Load in WebView
+                    // This is our main site. Load in WebView.
+                    return false;
                 } else {
-                    // External http/https link, open in default browser
-                    try {
-                        Log.d(TAG, "Opening external URL in browser: " + url);
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                        return true;
-                    } catch (Exception e) {
-                        Log.e(TAG, "Could not open external URL: " + e.getMessage());
-                        return true;
-                    }
+                    // This is an external ad or link.
+                    // Per user request, load it IN the WebView.
+                    return false;
                 }
             } else {
-                // Other schemes like tel:, mailto:, etc. (or unknown ones)
+                // Other schemes (tg:, tel:, mailto:, etc.) -> Outside
                 try {
                     Log.d(TAG, "Handling unknown scheme: " + url);
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
@@ -257,7 +268,6 @@ public class MainActivity extends Activity {
                     return true;
                 } catch (Exception e) {
                     Log.e(TAG, "Could not handle unknown scheme: " + e.getMessage());
-                    // --- FIXED: Changed Toast.SHORT to Toast.LENGTH_SHORT ---
                     Toast.makeText(MainActivity.this, "Cannot open link", Toast.LENGTH_SHORT).show();
                     return true;
                 }
@@ -265,7 +275,7 @@ public class MainActivity extends Activity {
         }
     }
     
-    // --- NEW: Method to trigger the ad URL 5 times per day ---
+    // --- Method to trigger the ad URL 5 times per day (now called by timer) ---
     private void triggerAdUrl() {
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -576,7 +586,7 @@ public class MainActivity extends Activity {
             builder.addAction(android.R.drawable.ic_media_pause, "Pause",
                 createMediaActionIntent("PAUSE"));
         } else {
-            builder.addAction(android.R.drawable.ic_media_play, "Play",
+            builder.addAction(android.r.drawable.ic_media_play, "Play",
                 createMediaActionIntent("PLAY"));
         }
 
@@ -887,6 +897,10 @@ public class MainActivity extends Activity {
             downloadCheckHandler.removeCallbacks(runnable);
         }
         downloadCheckRunnables.clear();
+
+        // --- NEW: Stop the ad timer ---
+        adHandler.removeCallbacks(adRunnable);
+        // ------------------------------
 
         // Unregister broadcast receiver
         if (mediaActionReceiver != null) {
