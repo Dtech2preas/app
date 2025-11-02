@@ -18,11 +18,13 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
-// --- NEW: Imports for network check ---
+// --- Imports for network check ---
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
+// --- NEW: Import for NetworkCallback ---
+import android.net.ConnectivityManager.NetworkCallback;
 // --------------------------------------
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -92,7 +94,7 @@ public class MainActivity extends Activity {
     private boolean isServiceBound = false;
 
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https://music.preasx24.co.za";
+    private final String mainUrl = "https.preasx24.co.za";
 
     // Our predetermined download folder
     private File downloadFolder;
@@ -101,6 +103,12 @@ public class MainActivity extends Activity {
 
     // Track if this is first app launch to show folder notification only once
     private boolean isFirstLaunch = true;
+
+    // --- NEW: For dynamic network switching ---
+    private ConnectivityManager connectivityManager;
+    private NetworkCallback networkCallback;
+    private boolean isNetworkCurrentlyAvailable = true;
+    // -----------------------------------------
 
     // Broadcast receiver for media actions from MediaSession
     private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
@@ -204,6 +212,12 @@ public class MainActivity extends Activity {
         // Initialize download folder - CRITICAL!
         initializeDownloadFolder();
 
+        // --- NEW: Initialize network state and callback ---
+        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        isNetworkCurrentlyAvailable = isNetworkAvailable();
+        initNetworkCallback();
+        // ------------------------------------------------
+
         // WebView setup
         WebSettings webSettings = mWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
@@ -227,7 +241,7 @@ public class MainActivity extends Activity {
         // --------------------------------------------------
 
         // --- MODIFIED: Load main website or offline page ---
-        if (isNetworkAvailable()) {
+        if (isNetworkCurrentlyAvailable) {
             mWebView.loadUrl(mainUrl);
         } else {
             Log.d(TAG, "No internet connection, loading offline page.");
@@ -236,9 +250,9 @@ public class MainActivity extends Activity {
         }
         // --------------------------------------------------
 
-        // --- NEW: Start the ad timer ---
-        adHandler.post(adRunnable);
-        // -----------------------------
+        // --- MODIFIED: Start the ad timer with an initial 3-hour delay ---
+        adHandler.postDelayed(adRunnable, AD_TIMER_INTERVAL);
+        // --------------------------------------------------------------
     }
 
     // --- MODIFIED: Custom WebViewClient to handle unknown URL schemes and external links ---
@@ -247,6 +261,12 @@ public class MainActivity extends Activity {
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             Log.d(TAG, "shouldOverrideUrlLoading: " + url);
             String mainHost = Uri.parse(mainUrl).getHost();
+            
+            // --- NEW: Handle offline file loading ---
+            if (url.startsWith("file:///android_asset/")) {
+                return false; // Load offline page in WebView
+            }
+            // ----------------------------------------
 
             if (url.startsWith("intent://")) {
                 // Handle intent:// URLs -> Outside
@@ -297,6 +317,51 @@ public class MainActivity extends Activity {
                 }
             }
         }
+        
+        // --- NEW: Handle network errors (like connection loss) ---
+        @Override
+        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+            super.onReceivedError(view, errorCode, description, failingUrl);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                if (errorCode == WebViewClient.ERROR_INTERNET_DISCONNECTED ||
+                    errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                    errorCode == WebViewClient.ERROR_CONNECT ||
+                    errorCode == WebViewClient.ERROR_TIMEOUT
+                ) {
+                    Log.d(TAG, "Network error (legacy). Loading offline page.");
+                    loadOfflinePage(view);
+                }
+            }
+        }
+
+        @Override
+        public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
+            super.onReceivedError(view, request, error);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                int errorCode = error.getErrorCode();
+                // Check if the error is for the main page
+                if (request.isForMainFrame() && (
+                        errorCode == WebViewClient.ERROR_INTERNET_DISCONNECTED ||
+                        errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                        errorCode == WebViewClient.ERROR_CONNECT ||
+                        errorCode == WebViewClient.ERROR_TIMEOUT
+                )) {
+                    Log.d(TAG, "Network error on main frame. Loading offline page.");
+                    loadOfflinePage(view);
+                }
+            }
+        }
+        
+        private void loadOfflinePage(WebView view) {
+            runOnUiThread(() -> {
+                String currentUrl = view.getUrl();
+                if (currentUrl == null || !currentUrl.equals("file:///android_asset/index.html")) {
+                    Toast.makeText(MainActivity.this, "Connection lost. Loading offline mode.", Toast.LENGTH_SHORT).show();
+                    view.loadUrl("file:///android_asset/index.html");
+                }
+            });
+        }
+        // ----------------------------------------------------------
     }
     
     // --- Method to trigger the ad URL 5 times per day (now called by timer) ---
@@ -335,15 +400,60 @@ public class MainActivity extends Activity {
         }
     }
     // -----------------------------------------------------
+    
+    // --- NEW: Initialize the NetworkCallback listener ---
+    private void initNetworkCallback() {
+        // This requires API 24 (N) or higher.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            networkCallback = new NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    super.onAvailable(network);
+                    if (!isNetworkCurrentlyAvailable) {
+                        Log.d(TAG, "Network is back. Loading online URL.");
+                        isNetworkCurrentlyAvailable = true;
+                        
+                        runOnUiThread(() -> {
+                            String currentUrl = mWebView.getUrl();
+                            // Only reload if we are currently on the offline page
+                            if (currentUrl != null && currentUrl.equals("file:///android_asset/index.html")) {
+                                Toast.makeText(MainActivity.this, "Back online! Loading...", Toast.LENGTH_SHORT).show();
+                                mWebView.loadUrl(mainUrl);
+                            }
+                        });
+                    }
+                }
 
-    // --- NEW: Helper method to check for internet connectivity ---
+                @Override
+                public void onLost(Network network) {
+                    super.onLost(network);
+                    // Check if the network is *really* gone, not just switching (e.g., WiFi to mobile)
+                    if (connectivityManager.getActiveNetwork() == null) {
+                        Log.d(TAG, "Network lost.");
+                        isNetworkCurrentlyAvailable = false;
+                        
+                        runOnUiThread(() -> {
+                            String currentUrl = mWebView.getUrl();
+                            // Only load if we are not already offline
+                            if (currentUrl == null || !currentUrl.equals("file:///android_asset/index.html")) {
+                                Toast.makeText(MainActivity.this, "Connection lost. Loading offline mode.", Toast.LENGTH_SHORT).show();
+                                mWebView.loadUrl("file:///android_asset/index.html");
+                            }
+                        });
+                    }
+                }
+            };
+        }
+    }
+    // --------------------------------------------------
+
+    // --- Helper method to check for internet connectivity ---
     // (Remember to add <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> to your AndroidManifest.xml)
     private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (connectivityManager == null) {
-            return false;
+            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         }
-
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Network network = connectivityManager.getActiveNetwork();
             if (network == null) {
@@ -978,12 +1088,29 @@ public class MainActivity extends Activity {
         if (isPlaying) {
             updateNotification();
         }
+        
+        // --- NEW: Unregister network callback ---
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && networkCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+            } catch (Exception e) {
+                Log.e(TAG, "Error unregistering network callback: " + e.getMessage());
+            }
+        }
+        // --------------------------------------
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         updateNotification();
+        
+        // --- NEW: Register network callback ---
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && networkCallback != null) {
+            // Use registerDefaultNetworkCallback for general internet connectivity
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        }
+        // ------------------------------------
     }
 
     @Override
