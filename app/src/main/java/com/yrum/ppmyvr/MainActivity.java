@@ -18,6 +18,12 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
+// --- NEW: Imports for network check ---
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+// --------------------------------------
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -207,8 +213,9 @@ public class MainActivity extends Activity {
         webSettings.setDatabaseEnabled(true);
         webSettings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Security settings
-        webSettings.setAllowFileAccessFromFileURLs(false);
+        // --- NEW: Allow loading from assets for offline mode ---
+        webSettings.setAllowFileAccessFromFileURLs(true); // Needed for file:///android_asset/
+        // --------------------------------------------------------
         webSettings.setAllowUniversalAccessFromFileURLs(false);
 
         // Create and attach bridge
@@ -219,15 +226,22 @@ public class MainActivity extends Activity {
         mWebView.setWebViewClient(new DTechWebViewClient());
         // --------------------------------------------------
 
-        // Load the main website
-        mWebView.loadUrl(mainUrl);
+        // --- MODIFIED: Load main website or offline page ---
+        if (isNetworkAvailable()) {
+            mWebView.loadUrl(mainUrl);
+        } else {
+            Log.d(TAG, "No internet connection, loading offline page.");
+            Toast.makeText(this, "No internet. Loading offline mode.", Toast.LENGTH_SHORT).show();
+            mWebView.loadUrl("file:///android_asset/index.html");
+        }
+        // --------------------------------------------------
 
         // --- NEW: Start the ad timer ---
         adHandler.post(adRunnable);
         // -----------------------------
     }
 
-    // --- MODIFIED: Custom WebViewClient to handle unknown URL schemes ---
+    // --- MODIFIED: Custom WebViewClient to handle unknown URL schemes and external links ---
     private class DTechWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -254,9 +268,19 @@ public class MainActivity extends Activity {
                     // This is our main site. Load in WebView.
                     return false;
                 } else {
-                    // This is an external ad or link.
-                    // Per user request, load it IN the WebView.
-                    return false;
+                    // --- MODIFIED: This is an external ad or link. Open in external browser. ---
+                    Log.d(TAG, "Opening external link in browser: " + url);
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        return true; // We've handled it
+                    } catch (Exception e) {
+                        Log.e(TAG, "Could not open external link: " + e.getMessage());
+                        Toast.makeText(MainActivity.this, "Cannot open link", Toast.LENGTH_SHORT).show();
+                        return true; // Don't load in WebView
+                    }
+                    // -------------------------------------------------------------------------
                 }
             } else {
                 // Other schemes (tg:, tel:, mailto:, etc.) -> Outside
@@ -311,6 +335,31 @@ public class MainActivity extends Activity {
         }
     }
     // -----------------------------------------------------
+
+    // --- NEW: Helper method to check for internet connectivity ---
+    // (Remember to add <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> to your AndroidManifest.xml)
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null) {
+            return false;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Network network = connectivityManager.getActiveNetwork();
+            if (network == null) {
+                return false;
+            }
+            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+            return capabilities != null && (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                                            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET));
+        } else {
+            // Deprecated for API < 23
+            NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+            return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+        }
+    }
+    // -----------------------------------------------------------
 
     private void requestRequiredPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
