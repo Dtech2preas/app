@@ -318,13 +318,14 @@ public class MainActivity extends Activity {
             }
         }
         
-        // --- NEW: Handle network errors (like connection loss) ---
+        // --- MODIFIED: Handle network errors (like connection loss) ---
+        @SuppressWarnings("deprecation") // We must use the deprecated one for old APIs
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
             super.onReceivedError(view, errorCode, description, failingUrl);
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-                if (errorCode == WebViewClient.ERROR_INTERNET_DISCONNECTED ||
-                    errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                // --- FIX: Removed ERROR_INTERNET_DISCONNECTED as it doesn't exist on WebViewClient ---
+                if (errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
                     errorCode == WebViewClient.ERROR_CONNECT ||
                     errorCode == WebViewClient.ERROR_TIMEOUT
                 ) {
@@ -340,14 +341,16 @@ public class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 int errorCode = error.getErrorCode();
                 // Check if the error is for the main page
-                if (request.isForMainFrame() && (
-                        errorCode == WebViewClient.ERROR_INTERNET_DISCONNECTED ||
-                        errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
-                        errorCode == WebViewClient.ERROR_CONNECT ||
-                        errorCode == WebViewClient.ERROR_TIMEOUT
-                )) {
-                    Log.d(TAG, "Network error on main frame. Loading offline page.");
-                    loadOfflinePage(view);
+                if (request.isForMainFrame()) {
+                    // --- FIX: Use constants from WebResourceError class ---
+                    if (errorCode == android.webkit.WebResourceError.ERROR_INTERNET_DISCONNECTED ||
+                        errorCode == android.webkit.WebResourceError.ERROR_HOST_LOOKUP ||
+                        errorCode == android.webkit.WebResourceError.ERROR_CONNECT ||
+                        errorCode == android.webkit.WebResourceError.ERROR_TIMEOUT
+                    ) {
+                        Log.d(TAG, "Network error on main frame. Loading offline page.");
+                        loadOfflinePage(view);
+                    }
                 }
             }
         }
@@ -1108,7 +1111,11 @@ public class MainActivity extends Activity {
         // --- NEW: Register network callback ---
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && networkCallback != null) {
             // Use registerDefaultNetworkCallback for general internet connectivity
-            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+            try {
+                connectivityManager.registerDefaultNetworkCallback(networkCallback);
+            } catch (Exception e) {
+                Log.e(TAG, "Error registering network callback: " + e.getMessage());
+            }
         }
         // ------------------------------------
     }
