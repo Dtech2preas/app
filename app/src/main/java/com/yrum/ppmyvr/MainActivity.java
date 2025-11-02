@@ -232,7 +232,7 @@ public class MainActivity extends Activity {
         } else {
             Log.d(TAG, "No internet connection, loading offline page.");
             Toast.makeText(this, "No internet. Loading offline mode.", Toast.LENGTH_SHORT).show();
-            mWebView.loadUrl("file:///asset/index.html");
+            mWebView.loadUrl("file:///android_asset/index.html");
         }
         // --------------------------------------------------
 
