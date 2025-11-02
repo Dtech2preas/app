@@ -94,7 +94,7 @@ public class MainActivity extends Activity {
     private boolean isServiceBound = false;
 
     // the website you browse for searching & server downloads
-    private final String mainUrl = "https.preasx24.co.za";
+    private final String mainUrl = "https://music.preasx24.co.za";
 
     // Our predetermined download folder
     private File downloadFolder;
