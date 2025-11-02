@@ -342,11 +342,10 @@ public class MainActivity extends Activity {
                 int errorCode = error.getErrorCode();
                 // Check if the error is for the main page
                 if (request.isForMainFrame()) {
-                    // --- FIX: Use constants from WebResourceError class ---
-                    if (errorCode == android.webkit.WebResourceError.ERROR_INTERNET_DISCONNECTED ||
-                        errorCode == android.webkit.WebResourceError.ERROR_HOST_LOOKUP ||
-                        errorCode == android.webkit.WebResourceError.ERROR_CONNECT ||
-                        errorCode == android.webkit.WebResourceError.ERROR_TIMEOUT
+                    // --- FIX: Use constants from WebViewClient class, not WebResourceError ---
+                    if (errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                        errorCode == WebViewClient.ERROR_CONNECT ||
+                        errorCode == WebViewClient.ERROR_TIMEOUT
                     ) {
                         Log.d(TAG, "Network error on main frame. Loading offline page.");
                         loadOfflinePage(view);
