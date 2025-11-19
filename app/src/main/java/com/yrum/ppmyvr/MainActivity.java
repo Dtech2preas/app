@@ -3,10 +3,12 @@ package com.yrum.ppmyvr2;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.ActivityInfo; // Import added
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager; // Import added
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -19,6 +21,8 @@ public class MainActivity extends Activity {
 
     private WebView mWebView;
     private FrameLayout rootLayout;
+    private View mCustomView; // Moved to class level to handle back button properly
+    private WebChromeClient.CustomViewCallback mCustomViewCallback;
 
     // Your anime website URL
     private final String mainUrl = "https://anime.preasx24.co.za";
@@ -27,12 +31,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // 1. FORCE PORTRAIT DEFAULT: Prevents rotation just by tilting phone
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        
         setContentView(R.layout.activity_main);
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
 
-        // WebView setup - essential settings for video playback
+        // WebView setup
         WebSettings webSettings = mWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
@@ -50,12 +58,10 @@ public class MainActivity extends Activity {
 
         // Set WebChromeClient for fullscreen video support
         mWebView.setWebChromeClient(new WebChromeClient() {
-            private View mCustomView;
-            private WebChromeClient.CustomViewCallback mCustomViewCallback;
-
+            
             @Override
             public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
-                // Enter fullscreen
+                // If a view already exists then immediately terminate the new one
                 if (mCustomView != null) {
                     callback.onCustomViewHidden();
                     return;
@@ -68,7 +74,10 @@ public class MainActivity extends Activity {
                 mWebView.setVisibility(View.GONE);
                 rootLayout.addView(mCustomView);
                 
-                // Set fullscreen mode
+                // 2. FORCE LANDSCAPE: When fullscreen button is clicked
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                
+                // Enter immersive fullscreen mode (Hide bars)
                 setFullscreen(true);
             }
 
@@ -90,7 +99,10 @@ public class MainActivity extends Activity {
                 mCustomView = null;
                 mCustomViewCallback = null;
                 
-                // Exit fullscreen mode
+                // 3. FORCE PORTRAIT BACK: When exiting video
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                
+                // Exit immersive fullscreen mode
                 setFullscreen(false);
             }
         });
@@ -99,27 +111,12 @@ public class MainActivity extends Activity {
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                Log.d(TAG, "shouldOverrideUrlLoading: " + url);
-                
                 // Handle your main domain - load in WebView
                 if (url.contains("anime.preasx24.co.za")) {
-                    return false; // Let WebView load the URL
+                    return false; 
                 }
                 
-                // Handle external links - open in browser
-                if (url.startsWith("http://") || url.startsWith("https://")) {
-                    try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                        return true;
-                    } catch (Exception e) {
-                        Log.e(TAG, "Could not open external link: " + e.getMessage());
-                        return true;
-                    }
-                }
-                
-                // Handle other schemes
+                // Handle external links
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -139,33 +136,32 @@ public class MainActivity extends Activity {
     private void setFullscreen(boolean fullscreen) {
         View decorView = getWindow().getDecorView();
         if (fullscreen) {
-            // Enter fullscreen
+            // Hide Status Bar and Navigation Bar
             decorView.setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION // Hide nav bar
+                | View.SYSTEM_UI_FLAG_FULLSCREEN // Hide status bar
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY // Keep them hidden
             );
+            // Keep screen on during video
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
-            // Exit fullscreen
-            decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            );
+            // Show everything again
+            decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            // Allow screen to turn off again
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
 
     @Override
-    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        // WebView will automatically handle orientation changes
-        Log.d(TAG, "Orientation changed: " + newConfig.orientation);
-    }
-
-    @Override
     public void onBackPressed() {
-        if (mWebView != null && mWebView.canGoBack()) {
+        // Check if video is playing in fullscreen
+        if (mCustomView != null) {
+            // If in video fullscreen, exit video fullscreen first
+            mWebView.getWebChromeClient().onHideCustomView();
+        } else if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
             super.onBackPressed();
