@@ -12,7 +12,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
-import android.widget.ProgressBar;
 
 public class MainActivity extends Activity {
 
@@ -20,7 +19,6 @@ public class MainActivity extends Activity {
 
     private WebView mWebView;
     private FrameLayout rootLayout;
-    private ProgressBar progressBar;
 
     // Your anime website URL
     private final String mainUrl = "https://anime.preasx24.co.za";
@@ -33,7 +31,6 @@ public class MainActivity extends Activity {
 
         rootLayout = findViewById(R.id.main_container);
         mWebView = findViewById(R.id.activity_main_webview);
-        progressBar = findViewById(R.id.progress_bar); // Add this to your layout if needed
 
         // WebView setup - essential settings for video playback
         WebSettings webSettings = mWebView.getSettings();
@@ -55,18 +52,6 @@ public class MainActivity extends Activity {
         mWebView.setWebChromeClient(new WebChromeClient() {
             private View mCustomView;
             private WebChromeClient.CustomViewCallback mCustomViewCallback;
-
-            @Override
-            public void onProgressChanged(WebView view, int newProgress) {
-                if (progressBar != null) {
-                    progressBar.setProgress(newProgress);
-                    if (newProgress == 100) {
-                        progressBar.setVisibility(View.GONE);
-                    } else {
-                        progressBar.setVisibility(View.VISIBLE);
-                    }
-                }
-            }
 
             @Override
             public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
@@ -180,7 +165,6 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // If in fullscreen video mode, exit fullscreen first
         if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
