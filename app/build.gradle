@@ -18,11 +18,11 @@ allprojects {
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.yrum.ppmyvr"
+    namespace "com.yrum.ppmyvr2"
     compileSdk 34
 
     defaultConfig {  
-        applicationId "com.yrum.ppmyvr"  
+        applicationId "com.yrum.ppmyvr2"  
         minSdk 21  
         targetSdk 34  
         versionCode 56898  
