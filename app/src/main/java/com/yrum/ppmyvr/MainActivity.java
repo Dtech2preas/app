@@ -1,4 +1,4 @@
-package com.yrum.ppmyvr;
+package com.yrum.ppmyvr2;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
