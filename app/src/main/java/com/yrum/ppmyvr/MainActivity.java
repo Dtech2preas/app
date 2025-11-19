@@ -76,8 +76,15 @@ public class MainActivity extends Activity {
             }
         });
 
-        // Load the main URL - no network checks, no offline fallback
+        // Load the main URL
         mWebView.loadUrl(mainUrl);
+    }
+
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // WebView will automatically handle orientation changes
+        // No need to reload or do anything special
     }
 
     @Override
