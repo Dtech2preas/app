@@ -2,7 +2,6 @@ package com.yrum.ppmyvr2;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -24,7 +23,6 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
@@ -41,19 +39,19 @@ public class MainActivity extends Activity {
     // UI Elements for the overlay
     private LinearLayout optionsPanel;
     private Button toggleButton;
+    private View invisibleHitBox; // The invisible trigger
     private Handler hideHandler = new Handler(Looper.getMainLooper());
 
-    // Your anime website URL
     private final String mainUrl = "https://anime.preasx24.co.za";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // 1. Lock Portrait by default
+        
+        // Default to portrait
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-
+        
         setContentView(R.layout.activity_main);
 
         rootLayout = findViewById(R.id.main_container);
@@ -81,50 +79,41 @@ public class MainActivity extends Activity {
                     callback.onCustomViewHidden();
                     return;
                 }
-
                 mCustomView = view;
                 mCustomViewCallback = callback;
-
                 mWebView.setVisibility(View.GONE);
 
-                // Add the video view (Match Parent)
+                // Add Video View
                 rootLayout.addView(mCustomView, new FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT));
 
-                // --- CREATE AND ADD THE OVERLAY MENU ---
-                createAspectRatioOverlay();
+                // Create the fading controls
+                createOverlayControls();
 
-                // Force Landscape
+                // Rotate to Landscape
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-                // Enter Immersive Mode
+                // Enable TRUE Fullscreen
                 setFullscreen(true);
             }
 
             @Override
             public void onHideCustomView() {
-                if (mCustomView == null) {
-                    return;
-                }
+                if (mCustomView == null) return;
 
-                // Remove overlay controls
-                removeAspectRatioOverlay();
-
-                // Reset scale
-                mCustomView.setScaleX(1.0f);
+                removeOverlayControls();
+                mCustomView.setScaleX(1.0f); // Reset scale
 
                 mWebView.setVisibility(View.VISIBLE);
                 rootLayout.removeView(mCustomView);
-
+                
                 if (mCustomViewCallback != null) {
                     mCustomViewCallback.onCustomViewHidden();
                 }
-
                 mCustomView = null;
                 mCustomViewCallback = null;
 
-                // Back to Portrait
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
                 setFullscreen(false);
             }
@@ -133,50 +122,59 @@ public class MainActivity extends Activity {
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url.contains("anime.preasx24.co.za")) {
-                    return false;
-                }
+                if (url.contains("anime.preasx24.co.za")) return false;
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(intent);
                     return true;
-                } catch (Exception e) {
-                    Log.e(TAG, "Could not handle URL: " + e.getMessage());
-                    return true;
-                }
+                } catch (Exception e) { return true; }
             }
         });
-
         mWebView.loadUrl(mainUrl);
     }
 
     // --- OVERLAY LOGIC ---
 
-    private void createAspectRatioOverlay() {
-        // 1. Create the Toggle Button (The small gear/icon in corner)
+    private void createOverlayControls() {
+        // 1. Invisible Hit Box (Top Right Corner)
+        // If you tap here when controls are hidden, they come back.
+        invisibleHitBox = new View(this);
+        invisibleHitBox.setBackgroundColor(Color.TRANSPARENT);
+        invisibleHitBox.setOnClickListener(v -> showControls());
+        
+        FrameLayout.LayoutParams hitBoxParams = new FrameLayout.LayoutParams(200, 200); // 200px size
+        hitBoxParams.gravity = Gravity.TOP | Gravity.END;
+        invisibleHitBox.setLayoutParams(hitBoxParams);
+
+        // 2. Toggle Button (Visible)
         toggleButton = new Button(this);
         toggleButton.setText("Screen Size");
         toggleButton.setTextSize(10);
-        toggleButton.setBackgroundColor(Color.parseColor("#40000000")); // Semi-transparent black
+        toggleButton.setBackgroundColor(Color.parseColor("#40000000")); 
         toggleButton.setTextColor(Color.WHITE);
         toggleButton.setPadding(10, 10, 10, 10);
         
         FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        btnParams.gravity = Gravity.TOP | Gravity.END; // Top Right
-        btnParams.setMargins(0, 50, 50, 0); // Little margin
+        btnParams.gravity = Gravity.TOP | Gravity.END; 
+        btnParams.setMargins(0, 50, 50, 0); 
         toggleButton.setLayoutParams(btnParams);
 
         toggleButton.setOnClickListener(v -> {
-            showOptionsPanel();
+            showControls(); // Reset timer
+            if (optionsPanel.getVisibility() == View.VISIBLE) {
+                optionsPanel.setVisibility(View.GONE);
+            } else {
+                optionsPanel.setVisibility(View.VISIBLE);
+            }
         });
 
-        // 2. Create the Panel holding the options (Hidden by default)
+        // 3. Options Panel
         optionsPanel = new LinearLayout(this);
         optionsPanel.setOrientation(LinearLayout.HORIZONTAL);
-        optionsPanel.setBackgroundColor(Color.parseColor("#AA000000")); // Dark background
+        optionsPanel.setBackgroundColor(Color.parseColor("#AA000000"));
         optionsPanel.setGravity(Gravity.CENTER);
         optionsPanel.setPadding(20, 20, 20, 20);
         
@@ -186,23 +184,23 @@ public class MainActivity extends Activity {
         panelParams.gravity = Gravity.CENTER;
         optionsPanel.setLayoutParams(panelParams);
         
-        // Add buttons to the panel
         addOptionButton("Original", 1.0f);
-        addOptionButton("18:9", 1.12f); // Slight stretch
-        addOptionButton("20:9", 1.20f); // Modern phones
-        addOptionButton("Full", 1.35f); // Max stretch
+        addOptionButton("18:9", 1.12f);
+        addOptionButton("20:9", 1.20f);
+        addOptionButton("Full", 1.35f);
 
-        // Add views to root
+        // Add to layout. Order matters!
+        // Hitbox first (bottom layer of overlay), then visible buttons
+        rootLayout.addView(invisibleHitBox); 
         rootLayout.addView(optionsPanel);
         rootLayout.addView(toggleButton);
 
-        // 3. Apply saved preference immediately
+        // Load saved preference
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        float savedScale = prefs.getFloat(PREF_SCALE, 1.0f);
-        applyScale(savedScale);
+        applyScale(prefs.getFloat(PREF_SCALE, 1.0f));
 
-        // Show panel for 3 seconds then hide
-        showOptionsPanel();
+        // Start the hide timer
+        showControls();
     }
 
     private void addOptionButton(String text, final float scale) {
@@ -214,38 +212,34 @@ public class MainActivity extends Activity {
             applyScale(scale);
             savePreference(scale);
             Toast.makeText(MainActivity.this, "Scale: " + text, Toast.LENGTH_SHORT).show();
-            // Reset the timer to hide
-            showOptionsPanel(); 
+            showControls(); // Keep controls visible briefly after click
         });
         optionsPanel.addView(btn);
     }
 
-    private void removeAspectRatioOverlay() {
+    private void removeOverlayControls() {
+        if (invisibleHitBox != null) rootLayout.removeView(invisibleHitBox);
         if (toggleButton != null) rootLayout.removeView(toggleButton);
         if (optionsPanel != null) rootLayout.removeView(optionsPanel);
         hideHandler.removeCallbacksAndMessages(null);
     }
 
-    private void showOptionsPanel() {
-        if (optionsPanel != null) {
-            optionsPanel.setVisibility(View.VISIBLE);
-            
-            // Cancel previous hide timer
-            hideHandler.removeCallbacksAndMessages(null);
-            
-            // Set new timer to hide after 2.5 seconds
-            hideHandler.postDelayed(() -> {
-                if (optionsPanel != null) {
-                    optionsPanel.setVisibility(View.GONE);
-                }
-            }, 2500);
-        }
+    // Show everything, then hide after 3 seconds
+    private void showControls() {
+        if (toggleButton != null) toggleButton.setVisibility(View.VISIBLE);
+        if (optionsPanel != null) optionsPanel.setVisibility(View.VISIBLE);
+        
+        hideHandler.removeCallbacksAndMessages(null);
+        hideHandler.postDelayed(() -> {
+            // Hide visible controls
+            if (toggleButton != null) toggleButton.setVisibility(View.GONE);
+            if (optionsPanel != null) optionsPanel.setVisibility(View.GONE);
+            // Note: invisibleHitBox stays technically "visible" but transparent so you can tap it
+        }, 3000);
     }
 
     private void applyScale(float scale) {
-        if (mCustomView != null) {
-            mCustomView.setScaleX(scale);
-        }
+        if (mCustomView != null) mCustomView.setScaleX(scale);
     }
 
     private void savePreference(float scale) {
@@ -254,27 +248,44 @@ public class MainActivity extends Activity {
         editor.apply();
     }
 
-    // --- END OVERLAY LOGIC ---
+    // --- FULLSCREEN LOGIC ---
 
     private void setFullscreen(boolean fullscreen) {
         View decorView = getWindow().getDecorView();
         if (fullscreen) {
-            decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            // 1. Standard Immersive Flags
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            
+            decorView.setSystemUiVisibility(flags);
+            
+            // 2. "Nuclear Option": FLAG_LAYOUT_NO_LIMITS
+            // This allows drawing strictly everywhere (under status bar, nav bar, etc)
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             );
+
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+            // 3. Cutout Mode (Notch support)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 getWindow().getAttributes().layoutInDisplayCutoutMode = 
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             }
+
         } else {
+            // Reset everything
             decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+            
+            // Clear "No Limits" to bring back system bars properly
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 getWindow().getAttributes().layoutInDisplayCutoutMode = 
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
