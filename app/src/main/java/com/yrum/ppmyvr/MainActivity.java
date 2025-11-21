@@ -11,10 +11,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.DisplayMetrics; // Needed for the math
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window; // Needed for window control
 import android.view.WindowManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -36,10 +38,10 @@ public class MainActivity extends Activity {
     private View mCustomView;
     private WebChromeClient.CustomViewCallback mCustomViewCallback;
 
-    // UI Elements for the overlay
+    // UI Elements
     private LinearLayout optionsPanel;
     private Button toggleButton;
-    private View invisibleHitBox; // The invisible trigger
+    private View invisibleHitBox;
     private Handler hideHandler = new Handler(Looper.getMainLooper());
 
     private final String mainUrl = "https://anime.preasx24.co.za";
@@ -49,7 +51,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Default to portrait
+        // 1. Lock Portrait initially
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         
         setContentView(R.layout.activity_main);
@@ -72,7 +74,6 @@ public class MainActivity extends Activity {
         webSettings.setDisplayZoomControls(false);
 
         mWebView.setWebChromeClient(new WebChromeClient() {
-
             @Override
             public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
                 if (mCustomView != null) {
@@ -88,13 +89,13 @@ public class MainActivity extends Activity {
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT));
 
-                // Create the fading controls
+                // Create Overlay
                 createOverlayControls();
 
-                // Rotate to Landscape
+                // Force Landscape
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-                // Enable TRUE Fullscreen
+                // Activate the "Nuclear" Fullscreen
                 setFullscreen(true);
             }
 
@@ -103,7 +104,7 @@ public class MainActivity extends Activity {
                 if (mCustomView == null) return;
 
                 removeOverlayControls();
-                mCustomView.setScaleX(1.0f); // Reset scale
+                mCustomView.setScaleX(1.0f); 
 
                 mWebView.setVisibility(View.VISIBLE);
                 rootLayout.removeView(mCustomView);
@@ -134,27 +135,44 @@ public class MainActivity extends Activity {
         mWebView.loadUrl(mainUrl);
     }
 
+    // --- DYNAMIC MATH LOGIC ---
+    
+    // This calculates the EXACT scale needed for YOUR specific phone
+    private float calculateAutoFitScale() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+        
+        // In landscape, width is the longer side
+        float realWidth = Math.max(metrics.widthPixels, metrics.heightPixels);
+        float realHeight = Math.min(metrics.widthPixels, metrics.heightPixels);
+        
+        float screenRatio = realWidth / realHeight;
+        float videoRatio = 16.0f / 9.0f; // Standard Anime Ratio (1.77)
+        
+        float scale = screenRatio / videoRatio;
+        
+        Log.d(TAG, "Auto-Fit Calc: Screen=" + screenRatio + " Video=" + videoRatio + " Scale=" + scale);
+        return scale;
+    }
+
     // --- OVERLAY LOGIC ---
 
     private void createOverlayControls() {
-        // 1. Invisible Hit Box (Top Right Corner)
-        // If you tap here when controls are hidden, they come back.
+        // 1. Invisible Hit Box
         invisibleHitBox = new View(this);
         invisibleHitBox.setBackgroundColor(Color.TRANSPARENT);
         invisibleHitBox.setOnClickListener(v -> showControls());
-        
-        FrameLayout.LayoutParams hitBoxParams = new FrameLayout.LayoutParams(200, 200); // 200px size
+        FrameLayout.LayoutParams hitBoxParams = new FrameLayout.LayoutParams(250, 250);
         hitBoxParams.gravity = Gravity.TOP | Gravity.END;
         invisibleHitBox.setLayoutParams(hitBoxParams);
 
-        // 2. Toggle Button (Visible)
+        // 2. Toggle Button
         toggleButton = new Button(this);
-        toggleButton.setText("Screen Size");
+        toggleButton.setText("Fit Screen");
         toggleButton.setTextSize(10);
         toggleButton.setBackgroundColor(Color.parseColor("#40000000")); 
         toggleButton.setTextColor(Color.WHITE);
         toggleButton.setPadding(10, 10, 10, 10);
-        
         FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
                 ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -163,7 +181,7 @@ public class MainActivity extends Activity {
         toggleButton.setLayoutParams(btnParams);
 
         toggleButton.setOnClickListener(v -> {
-            showControls(); // Reset timer
+            showControls();
             if (optionsPanel.getVisibility() == View.VISIBLE) {
                 optionsPanel.setVisibility(View.GONE);
             } else {
@@ -174,9 +192,9 @@ public class MainActivity extends Activity {
         // 3. Options Panel
         optionsPanel = new LinearLayout(this);
         optionsPanel.setOrientation(LinearLayout.HORIZONTAL);
-        optionsPanel.setBackgroundColor(Color.parseColor("#AA000000"));
+        optionsPanel.setBackgroundColor(Color.parseColor("#CC000000")); // Darker background
         optionsPanel.setGravity(Gravity.CENTER);
-        optionsPanel.setPadding(20, 20, 20, 20);
+        optionsPanel.setPadding(10, 10, 10, 10);
         
         FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, 
@@ -184,22 +202,27 @@ public class MainActivity extends Activity {
         panelParams.gravity = Gravity.CENTER;
         optionsPanel.setLayoutParams(panelParams);
         
+        // Standard Option
         addOptionButton("Original", 1.0f);
-        addOptionButton("18:9", 1.12f);
-        addOptionButton("20:9", 1.20f);
-        addOptionButton("Full", 1.35f);
+        
+        // THE MAGIC BUTTON: Auto-Fit
+        // We calculate the scale specifically for this phone right now
+        float perfectScale = calculateAutoFitScale();
+        addOptionButton("Auto-Fit", perfectScale);
+        
+        // Extreme Fill (Just in case)
+        addOptionButton("Max", perfectScale + 0.05f);
 
-        // Add to layout. Order matters!
-        // Hitbox first (bottom layer of overlay), then visible buttons
         rootLayout.addView(invisibleHitBox); 
         rootLayout.addView(optionsPanel);
         rootLayout.addView(toggleButton);
 
-        // Load saved preference
+        // Load Saved Preference
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        applyScale(prefs.getFloat(PREF_SCALE, 1.0f));
+        // If no preference, default to the calculated Auto-Fit immediately
+        float savedScale = prefs.getFloat(PREF_SCALE, perfectScale); 
+        applyScale(savedScale);
 
-        // Start the hide timer
         showControls();
     }
 
@@ -211,8 +234,8 @@ public class MainActivity extends Activity {
         btn.setOnClickListener(v -> {
             applyScale(scale);
             savePreference(scale);
-            Toast.makeText(MainActivity.this, "Scale: " + text, Toast.LENGTH_SHORT).show();
-            showControls(); // Keep controls visible briefly after click
+            Toast.makeText(MainActivity.this, text + " applied", Toast.LENGTH_SHORT).show();
+            showControls(); 
         });
         optionsPanel.addView(btn);
     }
@@ -224,18 +247,15 @@ public class MainActivity extends Activity {
         hideHandler.removeCallbacksAndMessages(null);
     }
 
-    // Show everything, then hide after 3 seconds
     private void showControls() {
         if (toggleButton != null) toggleButton.setVisibility(View.VISIBLE);
         if (optionsPanel != null) optionsPanel.setVisibility(View.VISIBLE);
         
         hideHandler.removeCallbacksAndMessages(null);
         hideHandler.postDelayed(() -> {
-            // Hide visible controls
             if (toggleButton != null) toggleButton.setVisibility(View.GONE);
             if (optionsPanel != null) optionsPanel.setVisibility(View.GONE);
-            // Note: invisibleHitBox stays technically "visible" but transparent so you can tap it
-        }, 3000);
+        }, 3000); // 3 Seconds
     }
 
     private void applyScale(float scale) {
@@ -248,47 +268,53 @@ public class MainActivity extends Activity {
         editor.apply();
     }
 
-    // --- FULLSCREEN LOGIC ---
+    // --- ULTIMATE FULLSCREEN LOGIC ---
 
     private void setFullscreen(boolean fullscreen) {
-        View decorView = getWindow().getDecorView();
+        Window window = getWindow();
+        View decorView = window.getDecorView();
+        
         if (fullscreen) {
-            // 1. Standard Immersive Flags
-            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            // 1. The flags to hide UI
+            int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            decorView.setSystemUiVisibility(uiOptions);
             
-            decorView.setSystemUiVisibility(flags);
-            
-            // 2. "Nuclear Option": FLAG_LAYOUT_NO_LIMITS
-            // This allows drawing strictly everywhere (under status bar, nav bar, etc)
-            getWindow().setFlags(
+            // 2. Allow drawing outside the safe area (Status bar strip removal)
+            window.setFlags(
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             );
 
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // 3. Keep screen awake
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-            // 3. Cutout Mode (Notch support)
+            // 4. CRITICAL: Force content into the "Notch" area
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                WindowManager.LayoutParams lp = window.getAttributes();
+                lp.layoutInDisplayCutoutMode = 
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                window.setAttributes(lp);
             }
 
         } else {
-            // Reset everything
+            // Reset UI flags
             decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
             
-            // Clear "No Limits" to bring back system bars properly
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // Clear No Limits
+            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+            // Reset Cutout mode
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                getWindow().getAttributes().layoutInDisplayCutoutMode = 
+                WindowManager.LayoutParams lp = window.getAttributes();
+                lp.layoutInDisplayCutoutMode = 
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+                window.setAttributes(lp);
             }
         }
     }
