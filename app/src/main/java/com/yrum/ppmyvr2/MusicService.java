@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Binder;
@@ -168,16 +169,8 @@ public class MusicService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             int foregroundServiceType = 0;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // Use reflection to access the constant for Android 14
-                try {
-                    Class<?> serviceClass = Service.class;
-                    java.lang.reflect.Field field = serviceClass.getField("FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK");
-                    foregroundServiceType = field.getInt(null);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error getting foreground service type: " + e.getMessage());
-                    // Fallback to 0 if we can't get the constant
-                    foregroundServiceType = 0;
-                }
+                // Use constant directly since we are compiling against SDK 34
+                foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
             }
             startForeground(NOTIFICATION_ID, notification, foregroundServiceType);
         } else {
