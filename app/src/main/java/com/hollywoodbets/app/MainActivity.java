@@ -1,4 +1,4 @@
-package com.yrum.ppmyvr2;
+package com.hollywoodbets.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;

@@ -18,11 +18,11 @@ allprojects {
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.yrum.ppmyvr2"
+    namespace "com.hollywoodbets.app"
     compileSdk 34
 
     defaultConfig {  
-        applicationId "com.yrum.ppmyvr2"  
+        applicationId "com.hollywoodbets.app"
         minSdk 21  
         targetSdk 34  
         versionCode 56898  
