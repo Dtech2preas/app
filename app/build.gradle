@@ -5,6 +5,7 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:8.2.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22"
     }
 }
 
@@ -16,6 +17,7 @@ allprojects {
 }
 
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
     namespace "com.hollywoodbets.app"
@@ -102,4 +104,12 @@ dependencies {
             because 'Force same Kotlin version'
         }
     }
+
+    // Networking & JSON
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // Lifecycle
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-service:2.6.2'
 }
