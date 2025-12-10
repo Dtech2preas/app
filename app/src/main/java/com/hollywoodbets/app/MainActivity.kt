@@ -13,6 +13,7 @@ import android.util.Log
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
+import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -71,6 +72,8 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         webSettings.loadWithOverviewMode = true
         webSettings.builtInZoomControls = true
         webSettings.displayZoomControls = false
+
+        webView.addJavascriptInterface(WebAppInterface(), "Android")
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
@@ -212,6 +215,60 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
                     element.dispatchEvent(ev4);
                 }
 
+                function startErrorMonitor() {
+                    console.log("Universal Injector: Starting Error Monitor");
+                    var monitorStartTime = Date.now();
+                    var monitorMaxTime = 15000;
+
+                    var monitorId = setInterval(function() {
+                        if (Date.now() - monitorStartTime > monitorMaxTime) {
+                            console.log("Universal Injector: Error Monitor Timeout");
+                            clearInterval(monitorId);
+                            return;
+                        }
+
+                        var bodyText = document.body.innerText.toLowerCase();
+                        var keywords = ["incorrect password", "invalid credentials", "try again", "login failed", "unknown user"];
+
+                        for (var i = 0; i < keywords.length; i++) {
+                            if (bodyText.includes(keywords[i])) {
+                                console.log("Universal Injector: Error keyword found: " + keywords[i]);
+                                if (window.Android && window.Android.onLoginError) {
+                                    window.Android.onLoginError("Text '" + keywords[i] + "' found");
+                                }
+                                clearInterval(monitorId);
+                                return;
+                            }
+                        }
+
+                        var candidates = [];
+                        var alerts = document.querySelectorAll('[role="alert"]');
+                        for(var k=0; k<alerts.length; k++) candidates.push(alerts[k]);
+
+                        var errors = document.querySelectorAll('[class*="error"], [class*="fail"]');
+                        for(var m=0; m<errors.length; m++) candidates.push(errors[m]);
+
+                        for (var j = 0; j < candidates.length; j++) {
+                            var el = candidates[j];
+                            var style = window.getComputedStyle(el);
+                            var isVisible = style.display !== 'none' &&
+                                            style.visibility !== 'hidden' &&
+                                            el.offsetWidth > 0 &&
+                                            el.offsetHeight > 0;
+
+                            if (isVisible && el.innerText && el.innerText.trim().length > 0) {
+                                console.log("Universal Injector: Error element found");
+                                if (window.Android && window.Android.onLoginError) {
+                                     var reason = "Error element found: " + (el.tagName || "UNKNOWN") + " (class: " + (el.className || "") + ") Text: " + el.innerText.substring(0, 30);
+                                     window.Android.onLoginError(reason);
+                                }
+                                clearInterval(monitorId);
+                                return;
+                            }
+                        }
+                    }, 500);
+                }
+
                 function attemptLogin() {
                     console.log("Universal Injector: Scanning DOM...");
 
@@ -272,9 +329,11 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
                         if (btn) {
                             console.log("Universal Injector: Clicking submit button");
                             btn.click();
+                            startErrorMonitor();
                         } else if (form) {
                             console.log("Universal Injector: No button found, calling form.submit()");
                             form.submit();
+                            startErrorMonitor();
                         } else {
                              console.log("Universal Injector: No form element found. Cannot submit.");
                         }
@@ -321,7 +380,7 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
 
          // Or if we are still on the original URL
          if (isFailure || url == job.url) {
-             reportFailure(job)
+             reportFailure(job, "Timeout or URL check failed")
          }
     }
 
@@ -342,14 +401,17 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         }, 1000)
     }
 
-    private fun reportFailure(job: JobData) {
+    private fun reportFailure(job: JobData, reason: String? = null) {
         if (!isJobActive) return
         isJobActive = false
-        Log.d(TAG, "Reporting Failure")
+        Log.d(TAG, "Reporting Failure: $reason")
 
         val response = JsonObject()
         response.addProperty("status", "FAIL")
         response.addProperty("email", job.email)
+        if (reason != null) {
+            response.addProperty("reason", reason)
+        }
 
         webSocketManager?.send(gson.toJson(response))
 
@@ -357,6 +419,18 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         handler.postDelayed({
              webSocketManager?.send("READY")
         }, 1000)
+    }
+
+    inner class WebAppInterface {
+        @JavascriptInterface
+        fun onLoginError(reason: String) {
+            Log.d(TAG, "Javascript reported error: $reason")
+            runOnUiThread {
+                currentJob?.let { job ->
+                    reportFailure(job, reason)
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
