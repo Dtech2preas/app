@@ -164,18 +164,7 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
 
         val job = currentJob ?: return
 
-        when (job.target.lowercase()) {
-            "crunchyroll" -> {
-               injectCrunchyroll(job)
-            }
-            "generic" -> {
-                injectGeneric(job)
-            }
-            else -> {
-                 // Try generic
-                 injectGeneric(job)
-            }
-        }
+        injectUniversal(job)
 
         // Schedule a check for failure if we don't succeed quickly
         handler.postDelayed({
@@ -183,49 +172,35 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         }, 8000) // Wait 8 seconds after load/injection to check status
     }
 
-    private fun injectCrunchyroll(job: JobData) {
+    private fun injectUniversal(job: JobData) {
         val js = """
             (function() {
-                var emailInput = document.querySelector('input[name="email"]');
-                var passInput = document.querySelector('input[name="password"]');
-                var submitBtn = document.querySelector('button[type="submit"]');
+                var email = "${job.email}";
+                var pwd = "${job.password}";
 
-                if (emailInput && passInput) {
-                    emailInput.value = '${job.email}';
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                var p = document.querySelector('input[type="password"]');
+                if (p) {
+                    p.value = pwd;
+                    p.dispatchEvent(new Event('input', {bubbles:true}));
 
-                    passInput.value = '${job.password}';
-                    passInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    var inputs = Array.from(document.querySelectorAll('input'));
+                    var idx = inputs.indexOf(p);
+                    for (var i = idx - 1; i >= 0; i--) {
+                        if (inputs[i].type === 'text' || inputs[i].type === 'email') {
+                            inputs[i].value = email;
+                            inputs[i].dispatchEvent(new Event('input', {bubbles:true}));
+                            break;
+                        }
+                    }
 
                     setTimeout(function() {
-                        if(submitBtn) submitBtn.click();
-                    }, 500);
+                        var f = p.closest('form');
+                        if (f) {
+                            var b = f.querySelector('button[type="submit"], input[type="submit"]');
+                            if (b) b.click(); else f.submit();
+                        }
+                    }, 1000);
                 }
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(js, null)
-    }
-
-    private fun injectGeneric(job: JobData) {
-         val js = """
-            (function() {
-                var emailInputs = document.querySelectorAll('input[type="email"], input[name*="user"], input[name*="email"]');
-                var passInputs = document.querySelectorAll('input[type="password"]');
-                var submitBtns = document.querySelectorAll('button[type="submit"], input[type="submit"]');
-
-                if (emailInputs.length > 0) {
-                    emailInputs[0].value = '${job.email}';
-                    emailInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-                }
-
-                if (passInputs.length > 0) {
-                    passInputs[0].value = '${job.password}';
-                    passInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-                }
-
-                 setTimeout(function() {
-                    if(submitBtns.length > 0) submitBtns[0].click();
-                }, 1000);
             })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
