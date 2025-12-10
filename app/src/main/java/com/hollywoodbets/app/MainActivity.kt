@@ -11,6 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -69,6 +71,13 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         webSettings.loadWithOverviewMode = true
         webSettings.builtInZoomControls = true
         webSettings.displayZoomControls = false
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                Log.d("WebViewConsole", "${consoleMessage.message()} -- From line ${consoleMessage.lineNumber()} of ${consoleMessage.sourceId()}")
+                return true
+            }
+        }
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
@@ -169,38 +178,112 @@ class MainActivity : Activity(), WebSocketManager.MessageListener {
         // Schedule a check for failure if we don't succeed quickly
         handler.postDelayed({
             checkFailureCondition()
-        }, 8000) // Wait 8 seconds after load/injection to check status
+        }, 40000) // Wait 40 seconds after load/injection to check status (allow 30s for JS polling)
     }
 
     private fun injectUniversal(job: JobData) {
+        val safeEmail = job.email.replace("\\", "\\\\").replace("\"", "\\\"")
+        val safePassword = job.password.replace("\\", "\\\\").replace("\"", "\\\"")
+
         val js = """
             (function() {
-                var email = "${job.email}";
-                var pwd = "${job.password}";
+                console.log("Universal Injector: Started");
+                var email = "$safeEmail";
+                var password = "$safePassword";
+                var maxTime = 30000;
+                var startTime = Date.now();
+                var intervalId = null;
 
-                var p = document.querySelector('input[type="password"]');
-                if (p) {
-                    p.value = pwd;
-                    p.dispatchEvent(new Event('input', {bubbles:true}));
+                // Improved Native Value Setter for React/Vue/Angular
+                function triggerInput(element, value) {
+                    console.log("Universal Injector: Setting value for", element.type || element.name);
 
+                    // 1. Set value property via prototype to bypass framework overrides
+                    var proto = window.HTMLInputElement.prototype;
+                    var nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                    nativeSetter.call(element, value);
+
+                    // 2. Dispatch events
+                    var ev2 = new Event('input', { bubbles: true });
+                    element.dispatchEvent(ev2);
+                    var ev3 = new Event('change', { bubbles: true });
+                    element.dispatchEvent(ev3);
+                    var ev4 = new Event('blur', { bubbles: true });
+                    element.dispatchEvent(ev4);
+                }
+
+                function attemptLogin() {
+                    console.log("Universal Injector: Scanning DOM...");
+
+                    // 1. Find Password Field
+                    var pwd = document.querySelector('input[type="password"]');
+
+                    if (!pwd) {
+                        if (Date.now() - startTime > maxTime) {
+                            console.log("Universal Injector: Timeout - No password field found");
+                            clearInterval(intervalId);
+                        }
+                        return; // Retry next tick
+                    }
+
+                    console.log("Universal Injector: Password field found");
+                    clearInterval(intervalId); // Stop polling once we find the target
+
+                    // 2. Find Username/Email Field
+                    // Strategy: Get all inputs, find index of password, look backwards
                     var inputs = Array.from(document.querySelectorAll('input'));
-                    var idx = inputs.indexOf(p);
+                    var idx = inputs.indexOf(pwd);
+                    var userField = null;
+
                     for (var i = idx - 1; i >= 0; i--) {
-                        if (inputs[i].type === 'text' || inputs[i].type === 'email') {
-                            inputs[i].value = email;
-                            inputs[i].dispatchEvent(new Event('input', {bubbles:true}));
+                        var input = inputs[i];
+                        var type = (input.getAttribute('type') || 'text').toLowerCase();
+                        // Checking for common user input types
+                        if (type === 'text' || type === 'email' || type === 'tel' || type === 'number') {
+                            userField = input;
                             break;
                         }
                     }
 
+                    if (userField) {
+                        console.log("Universal Injector: User field found");
+                        triggerInput(userField, email);
+                    } else {
+                        console.log("Universal Injector: Warning - No user field found preceding password");
+                    }
+
+                    triggerInput(pwd, password);
+
+                    // 3. Submit
                     setTimeout(function() {
-                        var f = p.closest('form');
-                        if (f) {
-                            var b = f.querySelector('button[type="submit"], input[type="submit"]');
-                            if (b) b.click(); else f.submit();
+                        var form = pwd.closest('form');
+                        var btn = null;
+
+                        if (form) {
+                            // Try to find submit button inside form
+                            btn = form.querySelector('button[type="submit"], input[type="submit"]');
+
+                            if (!btn) {
+                                 // Fallback: look for just 'button' tag inside form that isn't explicitly non-submit
+                                 btn = form.querySelector('button:not([type="button"]):not([type="reset"])');
+                            }
+                        }
+
+                        if (btn) {
+                            console.log("Universal Injector: Clicking submit button");
+                            btn.click();
+                        } else if (form) {
+                            console.log("Universal Injector: No button found, calling form.submit()");
+                            form.submit();
+                        } else {
+                             console.log("Universal Injector: No form element found. Cannot submit.");
                         }
                     }, 1000);
                 }
+
+                intervalId = setInterval(attemptLogin, 500);
+                attemptLogin();
+
             })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
