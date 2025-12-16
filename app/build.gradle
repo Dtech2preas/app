@@ -1,115 +1,34 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.2.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22"
-    }
+plugins {
+    id 'com.android.application'
 }
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
 
 android {
-    namespace "com.hollywoodbets.app"
+    namespace "com.dtech.scanner"
     compileSdk 34
 
-    defaultConfig {  
-        applicationId "com.hollywoodbets.app"
-        minSdk 21  
-        targetSdk 34  
-        versionCode 56898  
-        versionName "1.25"  
-    }  
-
-    compileOptions {  
-        sourceCompatibility JavaVersion.VERSION_17  
-        targetCompatibility JavaVersion.VERSION_17  
-    }  
-
-    buildTypes {  
-        release {  
-            minifyEnabled false  
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'  
-        }  
-    }  
-
-    lint {  
-        abortOnError false  
-        checkReleaseBuilds false  
+    defaultConfig {
+        applicationId "com.dtech.scanner"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
     }
 
-    // Add packaging options to exclude duplicate classes
-    packagingOptions {
-        exclude 'META-INF/*.kotlin_module'
-        resources.excludes.add("META-INF/*")
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
-}
 
-configurations.all {
-    // Force all Kotlin dependencies to use the same version
-    resolutionStrategy {
-        eachDependency { details ->
-            if (details.requested.group == 'org.jetbrains.kotlin') {
-                details.useVersion '1.8.22'
-            }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
-        // Prefer project modules
-        preferProjectModules()
     }
 }
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-
-    // Core AndroidX dependencies  
-    implementation 'androidx.core:core:1.12.0'  
-    implementation 'androidx.media:media:1.7.0'  
     implementation 'androidx.appcompat:appcompat:1.6.1'
-
-    // Media session compatibility with exclusions
-    implementation ('androidx.media2:media2-session:1.2.1') {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-    implementation ('androidx.media2:media2-widget:1.2.1') {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-    
-    // For better WebView compatibility
-    implementation 'androidx.webkit:webkit:1.9.0'
-    
-    // For notification compatibility
-    implementation 'androidx.core:core-google-shortcuts:1.1.0'
-
-    // Explicit Kotlin dependencies to avoid conflicts
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
-    constraints {
-        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22') {
-            because 'Force same Kotlin version'
-        }
-        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22') {
-            because 'Force same Kotlin version'
-        }
-    }
-
-    // Networking & JSON
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.10.1'
-
-    // Lifecycle
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
-    implementation 'androidx.lifecycle:lifecycle-service:2.6.2'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 }

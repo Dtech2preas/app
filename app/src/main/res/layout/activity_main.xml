@@ -1,12 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/main_container"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/terminal_black"
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <WebView
-        android:id="@+id/activity_main_webview"
+    <TextView
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="wrap_content"
+        android:text="D-TECH HOST SCANNER"
+        android:textColor="@color/terminal_blue"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"/>
 
-</FrameLayout>
+    <EditText
+        android:id="@+id/etHost"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:backgroundTint="@color/terminal_blue"
+        android:hint="Enter Host (e.g., education.gov.za)"
+        android:textColor="@color/terminal_white"
+        android:textColorHint="#888888"
+        android:inputType="textUri"
+        android:singleLine="true" />
+
+    <Button
+        android:id="@+id/btnScan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:backgroundTint="@color/terminal_blue"
+        android:text="DEEP SCAN"
+        android:textColor="@color/terminal_white"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="CONSOLE OUTPUT:"
+        android:textColor="@color/terminal_blue"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"/>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#111111"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tvConsole"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="> Ready..."
+            android:textColor="@color/terminal_white"
+            android:textSize="12sp" />
+
+    </ScrollView>
+
+</LinearLayout>
