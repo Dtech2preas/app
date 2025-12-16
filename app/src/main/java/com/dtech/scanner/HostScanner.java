@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import javax.net.ssl.SSLSocketFactory;
 public class HostScanner {
 
     private boolean isSslRequired = false;
+    private int sslPort = 443; // Default SSL Port. In a real app, this might be configurable.
 
     // State variables for Analysis Engine
     private boolean http200 = false;
@@ -25,11 +27,21 @@ public class HostScanner {
     private boolean dataTransfer = false;
     private boolean methodConnect = false;
 
+    // New State variables for Stress Tests
+    private boolean isAggressiveTimeout = false;
+    private boolean isStrictSNI = false;
+    private boolean isStableIdle = false;
+
     public interface ScanCallback {
         void onLog(String message);
         void onResult(String message);
         void onError(String error);
     }
+
+    // Note: removed setSslPort to stick to original design where port was hardcoded 443,
+    // though I'm keeping the internal usage of sslPort variable for cleaner code.
+    // If testing requires changing port, it should be done by changing this file temporarily or adding the setter back.
+    // For now, I will keep sslPort private and initialized to 443.
 
     public void scan(String host, ScanCallback callback) {
         // Reset state for new scan
@@ -40,6 +52,10 @@ public class HostScanner {
         dataTransfer = false;
         methodConnect = false;
 
+        isAggressiveTimeout = false;
+        isStrictSNI = false;
+        isStableIdle = false;
+
         callback.onLog(">> Starting Deep Scan for: " + host);
 
         // Step A: The Pulse Check (HTTP)
@@ -48,13 +64,21 @@ public class HostScanner {
         // Step B: Tunnel Capability Tests
         callback.onLog("\n>> Starting Tunnel Capability Tests...");
 
-        // 1. WebSocket Probe
+        // B.1. WebSocket Probe
         performWebSocketProbe(host, callback);
 
-        // 2. SNI/SSL Handshake & Data Pipe Test
+        // B.2. SNI/SSL Handshake & Data Pipe Test
         performSniHandshake(host, callback);
 
-        // 3. Method Enumeration
+        // B.3 & B.4 Stress Tests (Only if SNI Handshake worked)
+        if (sniSuccess) {
+            performIdleTimeoutCheck(host, callback);
+            performHostMismatchCheck(host, callback);
+        } else {
+            callback.onLog("\n>> Skipping Stress Tests (SNI Failed).");
+        }
+
+        // B.5. Method Enumeration
         performMethodEnumeration(host, callback);
 
         // Final Step: Analysis
@@ -152,12 +176,12 @@ public class HostScanner {
     }
 
     private void performSniHandshake(String host, ScanCallback callback) {
-        callback.onLog(">> [Step B.2] SNI/SSL Handshake (Port 443)...");
+        callback.onLog(">> [Step B.2] SNI/SSL Handshake (Port " + sslPort + ")...");
         SSLSocket socket = null;
         try {
             SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
             socket = (SSLSocket) factory.createSocket();
-            socket.connect(new InetSocketAddress(host, 443), 5000);
+            socket.connect(new InetSocketAddress(host, sslPort), 5000);
             socket.startHandshake();
 
             sniSuccess = true;
@@ -194,8 +218,100 @@ public class HostScanner {
         }
     }
 
+    private void performIdleTimeoutCheck(String host, ScanCallback callback) {
+        callback.onLog("\n>> [Step B.3] Idle Timeout Check...");
+        SSLSocket socket = null;
+        try {
+            SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+            socket = (SSLSocket) factory.createSocket();
+            socket.connect(new InetSocketAddress(host, sslPort), 5000);
+            socket.startHandshake();
+
+            // Wait 3 seconds
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Attempt to send
+            String request = "GET / HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
+            OutputStream out = socket.getOutputStream();
+            out.write(request.getBytes());
+            out.flush();
+
+            socket.setSoTimeout(5000);
+            InputStream in = socket.getInputStream();
+            int read = in.read();
+
+            if (read != -1) {
+                isStableIdle = true;
+                callback.onLog("   RESULT: Stable Idle (Connection maintained)");
+            } else {
+                isAggressiveTimeout = true;
+                callback.onLog("   RESULT: Aggressive Timeout (Server closed connection)");
+            }
+
+        } catch (IOException e) {
+            isAggressiveTimeout = true;
+            callback.onLog("   RESULT: Aggressive Timeout (" + e.getClass().getSimpleName() + ")");
+        } finally {
+            if (socket != null) {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+        }
+    }
+
+    private void performHostMismatchCheck(String host, ScanCallback callback) {
+        callback.onLog("\n>> [Step B.4] Host Mismatch Check...");
+        SSLSocket socket = null;
+        try {
+            SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+            socket = (SSLSocket) factory.createSocket();
+            socket.connect(new InetSocketAddress(host, sslPort), 5000);
+            socket.startHandshake();
+
+            // Send with fake Host header
+            String request = "GET / HTTP/1.1\r\nHost: google.com\r\nConnection: close\r\n\r\n";
+            OutputStream out = socket.getOutputStream();
+            out.write(request.getBytes());
+            out.flush();
+
+            socket.setSoTimeout(5000);
+            InputStream in = socket.getInputStream();
+            int read = in.read();
+
+            if (read != -1) {
+                // Returns data -> Loose
+                isStrictSNI = false;
+                callback.onLog("   RESULT: Loose (Accepted mismatching Host header)");
+            } else {
+                // Closed -> Strict
+                isStrictSNI = true;
+                callback.onLog("   RESULT: Strict (Closed on Host mismatch)");
+            }
+
+        } catch (IOException e) {
+            // Timeout or Exception -> Strict
+            isStrictSNI = true;
+            callback.onLog("   RESULT: Strict (" + e.getClass().getSimpleName() + ")");
+        } finally {
+            if (socket != null) {
+                try {
+                    socket.close();
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+        }
+    }
+
     private void performMethodEnumeration(String host, ScanCallback callback) {
-        callback.onLog(">> [Step B.3] Method Enumeration (OPTIONS)...");
+        callback.onLog("\n>> [Step B.5] Method Enumeration (OPTIONS)...");
         HttpURLConnection connection = null;
         try {
             // Note: Using HTTP for method enumeration as per common injection techniques,
@@ -245,7 +361,18 @@ public class HostScanner {
 
         // HA Tunnel / TLS Tunnel (SNI)
         if (dataTransfer) {
-            report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (SNI)\n");
+            // Refined Verdicts based on Stress Tests
+            if (isAggressiveTimeout) {
+                report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (Requires 'Realm Host' / Keep-Alive)\n");
+            } else if (isStrictSNI) {
+                report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (Requires 'Preserve SNI')\n");
+            } else if (isStableIdle) {
+                report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (Standard/Default Settings)\n");
+            } else {
+                 // Fallback if dataTransfer passed but idle check inconclusive (e.g. neither strict nor aggressive logic caught it)
+                 report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (Standard/Default Settings)\n");
+            }
+
         } else if (sniSuccess) {
             report.append("[!] HA Tunnel / TLS Tunnel:   PARTIAL (Handshake OK, No Data)\n");
         } else {
