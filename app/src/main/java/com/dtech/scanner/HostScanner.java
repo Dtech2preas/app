@@ -31,10 +31,7 @@ public class HostScanner {
         callback.onLog(">> Starting Deep Scan for: " + host);
 
         // Step A: The Pulse Check (HTTP)
-        if (!performPulseCheck(host, callback)) {
-            callback.onResult("Scan Terminated.");
-            return;
-        }
+        performPulseCheck(host, callback);
 
         // Step B: Tunnel Capability Tests
         callback.onLog("\n>> Starting Tunnel Capability Tests...");
@@ -58,6 +55,7 @@ public class HostScanner {
             URL url = new URL("http://" + host);
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("HEAD");
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
@@ -66,54 +64,23 @@ public class HostScanner {
             callback.onLog("   Response Code: " + responseCode);
 
             if (responseCode == 200) {
-                callback.onLog("   RESULT: Zero-Rated / Alive (200 OK)");
+                callback.onLog("   HTTP Direct Success");
                 return true;
             } else if (responseCode == 301 || responseCode == 302) {
-                callback.onLog("   RESULT: Redirected (Captive Portal detected)");
+                callback.onLog("   HTTP Redirected (Potential Port 80 Block). Proceeding to SSL Check...");
                 String location = connection.getHeaderField("Location");
                 if (location != null) {
                     callback.onLog("   Location: " + location);
                 }
-                return false;
+                return true;
             } else {
                 callback.onLog("   RESULT: Blocked/Other (" + responseCode + ")");
-                return false;
+                return true;
             }
 
         } catch (IOException e) {
-            callback.onLog(" >> [WARN] Cleartext (HTTP) connection failed/blocked. Retrying via HTTPS...");
-
-            // Cleanup previous connection attempt
-            if (connection != null) {
-                connection.disconnect();
-                connection = null;
-            }
-
-            // Retry with HTTPS
-            try {
-                URL url = new URL("https://" + host);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("HEAD");
-                connection.setInstanceFollowRedirects(false);
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
-
-                int responseCode = connection.getResponseCode();
-                callback.onLog("   Response Code: " + responseCode);
-
-                if (responseCode == 200) {
-                    isSslRequired = true;
-                    callback.onLog("   Alive (Encrypted/SSL)");
-                    return true;
-                } else {
-                    callback.onLog("   RESULT: Blocked/Other (" + responseCode + ")");
-                    return false;
-                }
-            } catch (IOException e2) {
-                callback.onError("   RESULT: Error/Timeout (" + e2.getMessage() + ")");
-                return false;
-            }
-
+            callback.onLog("   HTTP Unreachable. Proceeding to SSL Check...");
+            return true;
         } finally {
             if (connection != null) {
                 connection.disconnect();
