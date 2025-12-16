@@ -1,11 +1,11 @@
 <resources>
 
     <style name="AppTheme" parent="android:Theme.DeviceDefault.Light">
-        <item name="android:statusBarColor">@color/hollywood_purple</item>
-        <item name="android:colorPrimary">@color/hollywood_purple</item>
-        <item name="android:colorPrimaryDark">@color/hollywood_purple</item>
-        <item name="android:colorAccent">@color/hollywood_yellow</item>
-        <item name="android:windowBackground">@color/hollywood_purple</item>
+        <item name="android:statusBarColor">@color/terminal_black</item>
+        <item name="android:colorPrimary">@color/terminal_black</item>
+        <item name="android:colorPrimaryDark">@color/terminal_black</item>
+        <item name="android:colorAccent">@color/terminal_green</item>
+        <item name="android:windowBackground">@color/terminal_black</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
