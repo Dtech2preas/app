@@ -16,6 +16,8 @@ import javax.net.ssl.SSLSocketFactory;
 
 public class HostScanner {
 
+    private boolean isSslRequired = false;
+
     public interface ScanCallback {
         void onLog(String message);
         void onResult(String message);
@@ -23,6 +25,9 @@ public class HostScanner {
     }
 
     public void scan(String host, ScanCallback callback) {
+        // Reset state for new scan
+        isSslRequired = false;
+
         callback.onLog(">> Starting Deep Scan for: " + host);
 
         // Step A: The Pulse Check (HTTP)
@@ -76,8 +81,39 @@ public class HostScanner {
             }
 
         } catch (IOException e) {
-            callback.onError("   RESULT: Error/Timeout (" + e.getMessage() + ")");
-            return false;
+            callback.onLog(" >> [WARN] Cleartext (HTTP) connection failed/blocked. Retrying via HTTPS...");
+
+            // Cleanup previous connection attempt
+            if (connection != null) {
+                connection.disconnect();
+                connection = null;
+            }
+
+            // Retry with HTTPS
+            try {
+                URL url = new URL("https://" + host);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("HEAD");
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+
+                int responseCode = connection.getResponseCode();
+                callback.onLog("   Response Code: " + responseCode);
+
+                if (responseCode == 200) {
+                    isSslRequired = true;
+                    callback.onLog("   Alive (Encrypted/SSL)");
+                    return true;
+                } else {
+                    callback.onLog("   RESULT: Blocked/Other (" + responseCode + ")");
+                    return false;
+                }
+            } catch (IOException e2) {
+                callback.onError("   RESULT: Error/Timeout (" + e2.getMessage() + ")");
+                return false;
+            }
+
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -162,7 +198,8 @@ public class HostScanner {
             // Note: Using HTTP for method enumeration as per common injection techniques,
             // but usually this is done on the established tunnel.
             // Assuming direct HTTP request to host as per instructions.
-            URL url = new URL("http://" + host);
+            String protocol = isSslRequired ? "https://" : "http://";
+            URL url = new URL(protocol + host);
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("OPTIONS");
             connection.setConnectTimeout(5000);
