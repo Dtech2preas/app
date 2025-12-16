@@ -18,6 +18,13 @@ public class HostScanner {
 
     private boolean isSslRequired = false;
 
+    // State variables for Analysis Engine
+    private boolean http200 = false;
+    private boolean sniSuccess = false;
+    private boolean ws101 = false;
+    private boolean dataTransfer = false;
+    private boolean methodConnect = false;
+
     public interface ScanCallback {
         void onLog(String message);
         void onResult(String message);
@@ -27,6 +34,11 @@ public class HostScanner {
     public void scan(String host, ScanCallback callback) {
         // Reset state for new scan
         isSslRequired = false;
+        http200 = false;
+        sniSuccess = false;
+        ws101 = false;
+        dataTransfer = false;
+        methodConnect = false;
 
         callback.onLog(">> Starting Deep Scan for: " + host);
 
@@ -39,11 +51,14 @@ public class HostScanner {
         // 1. WebSocket Probe
         performWebSocketProbe(host, callback);
 
-        // 2. SNI/SSL Handshake
+        // 2. SNI/SSL Handshake & Data Pipe Test
         performSniHandshake(host, callback);
 
         // 3. Method Enumeration
         performMethodEnumeration(host, callback);
+
+        // Final Step: Analysis
+        analyzeCompatibility(callback);
 
         callback.onResult("\n>> Deep Scan Complete.");
     }
@@ -64,6 +79,7 @@ public class HostScanner {
             callback.onLog("   Response Code: " + responseCode);
 
             if (responseCode == 200) {
+                http200 = true;
                 callback.onLog("   HTTP Direct Success");
                 return true;
             } else if (responseCode == 301 || responseCode == 302) {
@@ -113,6 +129,7 @@ public class HostScanner {
             if (statusLine != null) {
                  callback.onLog("   Response: " + statusLine);
                  if (statusLine.contains("101")) {
+                     ws101 = true;
                      callback.onLog("   RESULT: WebSocket Upgrade SUCCESS (101 Switching Protocols)");
                  } else {
                      callback.onLog("   RESULT: Failed (Not 101)");
@@ -143,7 +160,26 @@ public class HostScanner {
             socket.connect(new InetSocketAddress(host, 443), 5000);
             socket.startHandshake();
 
+            sniSuccess = true;
             callback.onLog("   RESULT: SNI Supported (Handshake Successful)");
+
+            // Data Pipe Test
+            String request = "GET / HTTP/1.1\r\nHost: " + host + "\r\nConnection: close\r\n\r\n";
+            OutputStream out = socket.getOutputStream();
+            out.write(request.getBytes());
+            out.flush();
+
+            // Read 1 byte
+            socket.setSoTimeout(5000);
+            InputStream in = socket.getInputStream();
+            int read = in.read();
+
+            if (read != -1) {
+                dataTransfer = true;
+                callback.onLog("   >> SSL Data Pipe: ACTIVE (Bytes received)");
+            } else {
+                callback.onLog("   >> SSL Data Pipe: STALLED (Handshake OK, but no data)");
+            }
 
         } catch (IOException e) {
             callback.onLog("   RESULT: Handshake Failed (" + e.getMessage() + ")");
@@ -179,6 +215,10 @@ public class HostScanner {
             if (allowHeader != null && !allowHeader.isEmpty()) {
                 callback.onLog("   Allow Header: " + allowHeader);
                 callback.onLog("   RESULT: Methods Enumerated");
+
+                if (allowHeader.toUpperCase().contains("CONNECT")) {
+                    methodConnect = true;
+                }
             } else {
                 callback.onLog("   RESULT: No 'Allow' header found.");
 
@@ -196,5 +236,70 @@ public class HostScanner {
                 connection.disconnect();
             }
         }
+    }
+
+    private void analyzeCompatibility(ScanCallback callback) {
+        StringBuilder report = new StringBuilder();
+        report.append("\n=============================\n");
+        report.append("COMPATIBILITY VERDICT:\n");
+
+        // HA Tunnel / TLS Tunnel (SNI)
+        if (dataTransfer) {
+            report.append("[v] HA Tunnel / TLS Tunnel:   COMPATIBLE (SNI)\n");
+        } else if (sniSuccess) {
+            report.append("[!] HA Tunnel / TLS Tunnel:   PARTIAL (Handshake OK, No Data)\n");
+        } else {
+             report.append("[x] HA Tunnel / TLS Tunnel:   FAILED\n");
+        }
+
+        // HTTP Injector (Direct)
+        if (http200) {
+             report.append("[v] HTTP Injector (Direct):   COMPATIBLE\n");
+        } else {
+             report.append("[x] HTTP Injector (Direct):   FAILED (Redirected/Blocked)\n");
+        }
+
+        // WebSocket Mode
+        if (ws101) {
+             report.append("[v] WebSocket Mode:           COMPATIBLE\n");
+        } else {
+             report.append("[?] WebSocket Mode:           UNTESTED/FAILED\n");
+        }
+
+        // NapsternetV / HTTP Proxy (Method)
+        if (methodConnect) {
+            report.append("[v] NapsternetV / HTTP Proxy: COMPATIBLE (CONNECT Allowed)\n");
+        } else {
+            report.append("[?] NapsternetV / HTTP Proxy: UNTESTED/FAILED\n");
+        }
+
+        report.append("===========\n");
+
+        // Recommendations
+        report.append("RECOMMENDED VPN CONFIG:\n");
+        boolean anyRec = false;
+
+        if (dataTransfer) {
+            report.append("- TLS Tunnel / HA Tunnel Plus (SNI Mode)\n");
+            anyRec = true;
+        }
+        if (ws101) {
+            report.append("- HTTP Injector / Custom (WebSocket/V2Ray)\n");
+            anyRec = true;
+        }
+        if (http200) {
+            report.append("- HTTP Injector (Direct Payload)\n");
+            anyRec = true;
+        }
+        if (methodConnect) {
+            report.append("- NapsternetV / HTTP Proxy\n");
+            anyRec = true;
+        }
+
+        if (!anyRec) {
+            report.append("- None. Host appears fully blocked or incompatible.\n");
+        }
+
+        callback.onResult(report.toString());
     }
 }
